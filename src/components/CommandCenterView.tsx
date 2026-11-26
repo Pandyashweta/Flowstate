@@ -29,6 +29,7 @@ import {
   ProposedWorkflowDraft,
   TeamMember,
   UserProfile,
+  Workspace,
 } from '../types';
 import { SUPPORTED_VOICE_LANGUAGES } from '../hooks/useVoice';
 
@@ -48,8 +49,10 @@ interface CommandCenterViewProps {
   integrations: IntegrationItem[];
   teamMembers: TeamMember[];
   profile: UserProfile | null;
+  workspace?: Workspace | null;
   voice: {
     isListening: boolean;
+    isTranscribing?: boolean;
     isSpeaking: boolean;
     transcript: string;
     interimTranscript: string;
@@ -96,6 +99,7 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
   onApproveInline,
   approvals,
   knowledgeDocs,
+  workspace,
   voice,
   autoSpeak,
   onToggleAutoSpeak,
@@ -188,34 +192,43 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 h-[calc(100vh-7.5rem)] min-h-[620px]">
       {/* Left 7 Columns: Voice Orb + Conversational Orchestrator */}
-      <div className="xl:col-span-7 flex flex-col rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 overflow-hidden">
+      <div className="xl:col-span-7 flex flex-col rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] overflow-hidden">
         {/* Top Command Header with Voice Controls */}
-        <div className="px-5 py-4 border-b border-[#EEF2F7] dark:border-slate-800 bg-gradient-to-r from-[#F7F9FE] via-[#F5F2FE] to-[#EEF4FF] dark:from-[#121A2F] dark:via-[#1B1837] dark:to-[#13223D] flex flex-wrap items-center justify-between gap-3">
+        <div className="px-5 py-4 border-b border-[#E5E5E5] dark:border-[#262626] bg-[#FAFAFA] dark:bg-[#161616] flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <h2 className="font-display text-base font-bold text-slate-900 dark:text-white">
+              <Sparkles className="w-4 h-4 text-[#111111] dark:text-white" />
+              <h2 className="font-display text-base font-bold text-[#111111] dark:text-white">
                 AI Command Center
               </h2>
+              {workspace && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#F5F5F5] dark:bg-[#1A1A1A] text-[#111111] dark:text-white border border-[#E5E5E5] dark:border-[#262626] font-semibold">
+                  {workspace.name} ({workspace.type})
+                </span>
+              )}
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Voice-driven workflow generation grounded in {knowledgeDocs.length} enterprise
-              knowledge docs
-            </p>
+            <div className="flex items-center gap-2 text-xs text-[#737373] dark:text-[#737373] mt-0.5">
+              <span>Grounded in {knowledgeDocs.length} runbooks</span>
+              <span>•</span>
+              <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-mono text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Gemini Live Voice Active
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
             {/* Multilingual Voice Selector */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-[#E2E8F5] dark:border-slate-700">
-              <Globe className="w-3.5 h-3.5 text-slate-400" />
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#333333]">
+              <Globe className="w-3.5 h-3.5 text-[#737373]" />
               <select
                 value={voice.language}
                 onChange={(e) => voice.setLanguage(e.target.value)}
                 aria-label="Voice input language"
-                className="text-xs bg-transparent text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
+                className="text-xs bg-transparent text-[#404040] dark:text-[#E5E5E5] focus:outline-none cursor-pointer"
               >
                 {SUPPORTED_VOICE_LANGUAGES.map((lang) => (
-                  <option key={lang.code} value={lang.code} className="dark:bg-slate-900">
+                  <option key={lang.code} value={lang.code} className="dark:bg-[#161616]">
                     {lang.label}
                   </option>
                 ))}
@@ -231,8 +244,8 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
               }}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
                 autoSpeak
-                  ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-                  : 'bg-white dark:bg-slate-900 border-[#E2E8F5] dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                  ? 'bg-[#F5F5F5] dark:bg-[#1A1A1A] border-[#D4D4D4] dark:border-[#404040] text-[#111111] dark:text-white'
+                  : 'bg-white dark:bg-[#161616] border-[#E5E5E5] dark:border-[#333333] text-[#525252] dark:text-[#737373]'
               }`}
             >
               {autoSpeak ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
@@ -260,13 +273,16 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
               <button
                 type="button"
                 onClick={handleVoiceToggle}
-                className={`relative w-24 h-24 rounded-full flex items-center justify-center transition-all shadow-md cursor-pointer mb-5 ${
+                disabled={Boolean(voice.isTranscribing)}
+                className={`relative w-24 h-24 rounded-full flex items-center justify-center transition-all shadow-md cursor-pointer mb-5 disabled:opacity-60 ${
                   voice.isListening
                     ? 'bg-red-600 text-white scale-105 ring-8 ring-red-500/20'
-                    : 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white hover:scale-105 ring-8 ring-blue-500/10'
+                    : 'bg-[#111111] dark:bg-white text-white dark:text-[#111111] hover:scale-105 ring-8 ring-black/5 dark:ring-white/10'
                 }`}
               >
-                {voice.isListening ? (
+                {voice.isTranscribing ? (
+                  <Loader2 className="w-9 h-9 animate-spin" />
+                ) : voice.isListening ? (
                   <div className="flex items-center gap-1 h-8">
                     {[0.1, 0.25, 0.4, 0.2, 0.35].map((delay, i) => (
                       <span
@@ -281,47 +297,23 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                 )}
               </button>
 
-              <h3 className="font-display text-lg font-bold text-slate-900 dark:text-white">
-                {voice.isListening
-                  ? 'Listening... speak your business instruction'
+              <h3 className="font-display text-lg font-bold text-[#111111] dark:text-white">
+                {voice.isTranscribing
+                  ? 'Transcribing your voice command...'
+                  : voice.isListening
+                  ? 'Listening... tap mic again to send'
                   : 'Tap the microphone or type a workflow command'}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+              <p className="text-xs text-[#737373] dark:text-[#737373] mt-1.5 leading-relaxed">
                 FLOWSTATE transcribes speech, searches your uploaded runbooks using semantic RAG,
                 generates structured tasks, and queues human approvals automatically.
               </p>
 
               {(voice.transcript || voice.interimTranscript) && (
-                <div className="mt-4 w-full p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs text-blue-900 dark:text-blue-200">
+                <div className="mt-4 w-full p-3 rounded-xl bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] text-xs text-[#111111] dark:text-white">
                   “{voice.transcript} {voice.interimTranscript}”
                 </div>
               )}
-
-              {/* Ready-to-run Enterprise Demo Prompts */}
-              <div className="mt-6 w-full space-y-2 text-left">
-                <div className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                  Try Real-World Demonstration Scenarios
-                </div>
-                {DEMO_SCENARIOS.map((sc) => (
-                  <button
-                    key={sc.label}
-                    type="button"
-                    disabled={isProcessing}
-                    onClick={() => void onSendCommand(sc.prompt, 'voice')}
-                    className="w-full p-3 rounded-xl border border-[#E6ECF5] dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 bg-[#FAFBFD] dark:bg-slate-900/60 hover:bg-blue-50/40 dark:hover:bg-blue-950/30 transition-colors cursor-pointer group"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-slate-900 dark:text-white">
-                        {sc.label}
-                      </span>
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 transition-colors shrink-0" />
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
-                      “{sc.prompt}”
-                    </p>
-                  </button>
-                ))}
-              </div>
             </div>
           ) : (
             messages.map((msg) => (
@@ -332,12 +324,12 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                 <div
                   className={`max-w-[90%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
                     msg.role === 'user'
-                      ? 'bg-[#EEF4FF] dark:bg-blue-950/60 text-slate-900 dark:text-slate-100 border border-blue-100 dark:border-blue-900'
-                      : 'bg-[#F8FAFD] dark:bg-slate-900/80 text-slate-800 dark:text-slate-200 border border-[#E6ECF5] dark:border-slate-800'
+                      ? 'bg-[#F5F5F5] dark:bg-[#1A1A1A] text-[#111111] dark:text-[#F5F5F5] border border-[#E5E5E5] dark:border-[#262626]'
+                      : 'bg-[#FAFAFA] dark:bg-[#161616]/80 text-[#262626] dark:text-[#E5E5E5] border border-[#E5E5E5] dark:border-[#262626]'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-3 mb-1.5 text-[11px] text-slate-400">
-                    <span className="font-semibold text-slate-600 dark:text-slate-300">
+                  <div className="flex items-center justify-between gap-3 mb-1.5 text-[11px] text-[#737373]">
+                    <span className="font-semibold text-[#525252] dark:text-[#D4D4D4]">
                       {msg.role === 'user'
                         ? msg.inputMode === 'voice'
                           ? 'You · Voice Transcript'
@@ -350,7 +342,7 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                           type="button"
                           onClick={() => voice.speak(msg.spokenText || msg.content)}
                           title="Read aloud"
-                          className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer inline-flex items-center gap-1"
+                          className="text-[#111111] dark:text-white hover:underline cursor-pointer inline-flex items-center gap-1"
                         >
                           <Volume2 className="w-3 h-3" />
                           <span>Speak</span>
@@ -369,28 +361,28 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
 
                   {/* Visible Stage-by-Stage Execution Pipeline */}
                   {msg.trace && msg.trace.length > 0 && (
-                    <div className="mt-3.5 pt-3 border-t border-slate-200/70 dark:border-slate-800 space-y-2">
-                      <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                    <div className="mt-3.5 pt-3 border-t border-[#E5E5E5]/70 dark:border-[#262626] space-y-2">
+                      <div className="text-[11px] font-semibold text-[#737373] dark:text-[#737373]">
                         Execution Pipeline Trace
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {msg.trace.map((step, idx) => (
                           <div
                             key={idx}
-                            className="flex items-start gap-2 p-2 rounded-lg bg-white dark:bg-slate-950/60 border border-slate-200/70 dark:border-slate-800 text-[11px]"
+                            className="flex items-start gap-2 p-2 rounded-lg bg-white dark:bg-[#0A0A0A]/60 border border-[#E5E5E5]/70 dark:border-[#262626] text-[11px]"
                           >
                             {step.status === 'completed' ? (
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                             ) : step.status === 'warning' ? (
                               <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                             ) : (
-                              <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
+                              <Clock className="w-3.5 h-3.5 text-[#111111] dark:text-white shrink-0 mt-0.5" />
                             )}
                             <div className="min-w-0">
-                              <div className="font-semibold text-slate-800 dark:text-slate-200">
+                              <div className="font-semibold text-[#262626] dark:text-[#E5E5E5]">
                                 {step.stage}
                               </div>
-                              <div className="text-slate-500 dark:text-slate-400 truncate">
+                              <div className="text-[#737373] dark:text-[#737373] truncate">
                                 {step.detail}
                               </div>
                             </div>
@@ -402,24 +394,24 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
 
                   {/* RAG Source Citations */}
                   {msg.ragCitations && msg.ragCitations.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-slate-200/70 dark:border-slate-800">
-                      <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">
-                        <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                    <div className="mt-3 pt-3 border-t border-[#E5E5E5]/70 dark:border-[#262626]">
+                      <div className="text-[11px] font-semibold text-[#737373] dark:text-[#737373] mb-1.5 flex items-center gap-1.5">
+                        <BookOpen className="w-3.5 h-3.5 text-[#111111] dark:text-white" />
                         <span>Retrieved Knowledge Base Sources</span>
                       </div>
                       <div className="space-y-1.5">
                         {msg.ragCitations.slice(0, 2).map((cit, i) => (
                           <div
                             key={`${cit.docId}-${i}`}
-                            className="p-2.5 rounded-lg bg-white dark:bg-slate-950/60 border border-slate-200/70 dark:border-slate-800 text-[11px]"
+                            className="p-2.5 rounded-lg bg-white dark:bg-[#0A0A0A]/60 border border-[#E5E5E5]/70 dark:border-[#262626] text-[11px]"
                           >
-                            <div className="flex items-center justify-between gap-2 font-semibold text-slate-800 dark:text-slate-200">
+                            <div className="flex items-center justify-between gap-2 font-semibold text-[#262626] dark:text-[#E5E5E5]">
                               <span className="truncate">{cit.docTitle}</span>
-                              <span className="font-mono text-blue-600 dark:text-blue-400 tabular-nums shrink-0">
+                              <span className="font-mono text-[#111111] dark:text-white tabular-nums shrink-0">
                                 {Math.round(cit.similarity * 100)}% match
                               </span>
                             </div>
-                            <p className="text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                            <p className="text-[#737373] dark:text-[#737373] mt-1 line-clamp-2">
                               {cit.excerpt}
                             </p>
                           </div>
@@ -430,7 +422,7 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
 
                   {/* Clarifying Questions if AI needs more info */}
                   {msg.clarifyingQuestions && msg.clarifyingQuestions.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-slate-200/70 dark:border-slate-800 space-y-1.5">
+                    <div className="mt-3 pt-3 border-t border-[#E5E5E5]/70 dark:border-[#262626] space-y-1.5">
                       <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
                         Clarification Questions
                       </div>
@@ -456,7 +448,7 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                           setSelectedDraftMsgId(msg.id);
                           setEditableDraft(msg.proposedWorkflow ?? null);
                         }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] text-xs font-medium cursor-pointer"
                       >
                         <FileText className="w-3.5 h-3.5" />
                         <span>
@@ -476,8 +468,8 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
           )}
 
           {isProcessing && (
-            <div className="flex items-center gap-3 p-4 rounded-2xl bg-[#F8FAFD] dark:bg-slate-900 border border-[#E6ECF5] dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300">
-              <Loader2 className="w-4 h-4 text-blue-600 animate-spin shrink-0" />
+            <div className="flex items-center gap-3 p-4 rounded-2xl bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] text-xs text-[#525252] dark:text-[#D4D4D4]">
+              <Loader2 className="w-4 h-4 text-[#111111] dark:text-white animate-spin shrink-0" />
               <span>
                 Searching enterprise Knowledge Base via semantic embeddings & orchestrating
                 workflow...
@@ -505,8 +497,15 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
         {/* Bottom Prompt & Voice Bar */}
         <form
           onSubmit={handleSubmit}
-          className="p-4 border-t border-[#EEF2F7] dark:border-slate-800 bg-[#FAFBFD] dark:bg-slate-900/70"
+          className="p-4 border-t border-[#E5E5E5] dark:border-[#262626] bg-[#FAFAFA] dark:bg-[#161616]/70"
         >
+          {voice.isTranscribing && (
+            <div className="mb-2.5 flex items-center gap-2 px-3 py-2 rounded-xl bg-[#F5F5F5] dark:bg-[#1A1A1A] border border-[#E5E5E5] dark:border-[#262626] text-xs text-[#111111] dark:text-white">
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              <span>Transcribing voice audio...</span>
+            </div>
+          )}
+
           {voice.isListening && (
             <div className="mb-2.5 flex items-center justify-between px-3 py-2 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 text-xs text-red-700 dark:text-red-300">
               <div className="flex items-center gap-2 min-w-0">
@@ -520,7 +519,7 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                 onClick={voice.stopListening}
                 className="font-semibold underline ml-2 shrink-0 cursor-pointer"
               >
-                Stop
+                Stop &amp; Send
               </button>
             </div>
           )}
@@ -529,12 +528,12 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
             <button
               type="button"
               onClick={handleVoiceToggle}
-              disabled={isProcessing}
-              title={voice.isListening ? 'Stop recording' : 'Start voice command'}
-              className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all shrink-0 cursor-pointer ${
+              disabled={isProcessing || Boolean(voice.isTranscribing)}
+              title={voice.isListening ? 'Stop recording & send' : 'Start voice command'}
+              className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all shrink-0 cursor-pointer disabled:opacity-50 ${
                 voice.isListening
                   ? 'bg-red-600 text-white shadow-sm'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
+                  : 'bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] shadow-xs'
               }`}
             >
               {voice.isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -546,13 +545,13 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
               onChange={(e) => setInputText(e.target.value)}
               disabled={isProcessing}
               placeholder="Describe a task, ask to modify the draft workflow, or click the mic to speak..."
-              className="flex-1 min-w-0 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-[#DDE4F2] dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="flex-1 min-w-0 px-4 py-2.5 rounded-xl bg-white dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#333333] text-sm text-[#111111] dark:text-white placeholder:text-[#737373] focus:outline-none focus:border-[#111111] dark:focus:border-white"
             />
 
             <button
               type="submit"
               disabled={isProcessing || !inputText.trim()}
-              className="inline-flex items-center justify-center gap-1.5 px-4 h-11 rounded-xl bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+              className="inline-flex items-center justify-center gap-1.5 px-4 h-11 rounded-xl bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 shrink-0"
             >
               <Send className="w-4 h-4" />
               <span className="hidden sm:inline">Send</span>
@@ -562,13 +561,13 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
       </div>
 
       {/* Right 5 Columns: Structured Workflow Preview, RAG Troubleshooting & Approval Controls */}
-      <div className="xl:col-span-5 flex flex-col rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 overflow-hidden">
-        <div className="px-5 py-4 border-b border-[#EEF2F7] dark:border-slate-800 flex items-center justify-between gap-2">
+      <div className="xl:col-span-5 flex flex-col rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#E5E5E5] dark:border-[#262626] flex items-center justify-between gap-2">
           <div>
-            <h3 className="font-display text-sm font-bold text-slate-900 dark:text-white">
+            <h3 className="font-display text-sm font-bold text-[#111111] dark:text-white">
               Workflow & Approval Preview
             </h3>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            <p className="text-[11px] text-[#737373] dark:text-[#737373]">
               Review, edit, and authorize before execution
             </p>
           </div>
@@ -576,7 +575,7 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
             <button
               type="button"
               onClick={() => onNavigate('workflows')}
-              className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+              className="text-xs font-medium text-[#111111] dark:text-white hover:underline cursor-pointer"
             >
               Open in Workflows →
             </button>
@@ -586,13 +585,13 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {!editableDraft ? (
             <div className="h-full flex flex-col items-center justify-center text-center py-12 px-4">
-              <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
+              <div className="w-12 h-12 rounded-2xl bg-[#F5F5F5] dark:bg-[#1A1A1A] text-[#111111] dark:text-white flex items-center justify-center mb-3">
                 <ShieldCheck className="w-6 h-6" />
               </div>
-              <h4 className="font-display text-sm font-semibold text-slate-900 dark:text-white">
+              <h4 className="font-display text-sm font-semibold text-[#111111] dark:text-white">
                 No Active Workflow Draft
               </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs leading-relaxed">
+              <p className="text-xs text-[#737373] dark:text-[#737373] mt-1 max-w-xs leading-relaxed">
                 Speak or submit a business request on the left. FLOWSTATE will inspect your
                 Knowledge Base and construct an editable workflow plan here.
               </p>
@@ -602,7 +601,7 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
               {/* Editable Core Workflow Fields */}
               <div className="space-y-3">
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                  <label className="block text-[11px] font-medium text-[#737373] dark:text-[#737373] mb-1">
                     Workflow Title
                   </label>
                   <input
@@ -612,13 +611,13 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                     onChange={(e) =>
                       setEditableDraft({ ...editableDraft, title: e.target.value })
                     }
-                    className="w-full px-3 py-2 rounded-lg bg-[#F8FAFD] dark:bg-slate-900 border border-[#E6ECF5] dark:border-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-75"
+                    className="w-full px-3 py-2 rounded-lg bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] text-xs font-semibold text-[#111111] dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-75"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
-                    <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    <label className="block text-[11px] font-medium text-[#737373] dark:text-[#737373] mb-1">
                       Category
                     </label>
                     <input
@@ -628,11 +627,11 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                       onChange={(e) =>
                         setEditableDraft({ ...editableDraft, category: e.target.value })
                       }
-                      className="w-full px-3 py-1.5 rounded-lg bg-[#F8FAFD] dark:bg-slate-900 border border-[#E6ECF5] dark:border-slate-800 text-xs text-slate-800 dark:text-slate-200 disabled:opacity-75"
+                      className="w-full px-3 py-1.5 rounded-lg bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] text-xs text-[#262626] dark:text-[#E5E5E5] disabled:opacity-75"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    <label className="block text-[11px] font-medium text-[#737373] dark:text-[#737373] mb-1">
                       Priority
                     </label>
                     <select
@@ -644,7 +643,7 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                           priority: e.target.value as PriorityLevel,
                         })
                       }
-                      className="w-full px-3 py-1.5 rounded-lg bg-[#F8FAFD] dark:bg-slate-900 border border-[#E6ECF5] dark:border-slate-800 text-xs text-slate-800 dark:text-slate-200 disabled:opacity-75"
+                      className="w-full px-3 py-1.5 rounded-lg bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] text-xs text-[#262626] dark:text-[#E5E5E5] disabled:opacity-75"
                     >
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
@@ -654,12 +653,12 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-[#F8FAFD] dark:bg-slate-900 border border-[#E6ECF5] dark:border-slate-800 text-xs">
-                  <span className="inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-                    <Users className="w-3.5 h-3.5 text-blue-600" />
+                <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] text-xs">
+                  <span className="inline-flex items-center gap-1.5 text-[#737373] dark:text-[#737373]">
+                    <Users className="w-3.5 h-3.5 text-[#111111] dark:text-white" />
                     Recommended Team
                   </span>
-                  <span className="font-semibold text-slate-900 dark:text-white">
+                  <span className="font-semibold text-[#111111] dark:text-white">
                     {editableDraft.recommendedTeam}
                   </span>
                 </div>
@@ -667,11 +666,11 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
 
               {/* Grounded RAG Troubleshooting Summary */}
               {editableDraft.troubleshootingSummary && (
-                <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/60">
-                  <div className="text-[11px] font-semibold text-blue-800 dark:text-blue-300 mb-1">
+                <div className="p-3.5 rounded-xl bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626]">
+                  <div className="text-[11px] font-semibold text-[#111111] dark:text-white mb-1">
                     Grounded Troubleshooting & Incident Summary
                   </div>
-                  <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                  <p className="text-xs text-[#404040] dark:text-[#D4D4D4] leading-relaxed whitespace-pre-wrap">
                     {editableDraft.troubleshootingSummary}
                   </p>
                 </div>
@@ -680,10 +679,10 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
               {/* Generated Structured Tasks */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-slate-900 dark:text-white">
+                  <span className="text-xs font-semibold text-[#111111] dark:text-white">
                     Orchestrated Tasks ({editableDraft.tasks.length})
                   </span>
-                  <span className="text-[11px] font-mono text-slate-400">
+                  <span className="text-[11px] font-mono text-[#737373]">
                     Due {editableDraft.dueDate}
                   </span>
                 </div>
@@ -691,27 +690,27 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                   {editableDraft.tasks.map((task, idx) => (
                     <div
                       key={idx}
-                      className="p-3 rounded-xl border border-[#E6ECF5] dark:border-slate-800 bg-[#FAFBFD] dark:bg-slate-900/60"
+                      className="p-3 rounded-xl border border-[#E5E5E5] dark:border-[#262626] bg-[#FAFAFA] dark:bg-[#161616]/60"
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="text-xs font-semibold text-slate-900 dark:text-white">
+                        <div className="text-xs font-semibold text-[#111111] dark:text-white">
                           {idx + 1}. {task.title}
                         </div>
-                        <span className="text-[10px] font-mono uppercase text-slate-500 dark:text-slate-400 shrink-0">
+                        <span className="text-[10px] font-mono uppercase text-[#737373] dark:text-[#737373] shrink-0">
                           {task.priority}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      <p className="text-[11px] text-[#737373] dark:text-[#737373] mt-1">
                         {task.description}
                       </p>
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 text-[11px] text-[#737373] dark:text-[#737373]">
                         <span>Owner: {task.assignee}</span>
                         <span>·</span>
                         <span>{task.department}</span>
                         {task.integrationAction && (
                           <>
                             <span>·</span>
-                            <span className="text-blue-600 dark:text-blue-400">
+                            <span className="text-[#111111] dark:text-white">
                               {task.integrationAction}
                             </span>
                           </>
@@ -734,14 +733,14 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                       Simulated Connector
                     </span>
                   </div>
-                  <div className="text-xs font-medium text-slate-900 dark:text-white">
+                  <div className="text-xs font-medium text-[#111111] dark:text-white">
                     {editableDraft.approvalRequest.actionType} →{' '}
                     {editableDraft.approvalRequest.integrationTarget}
                   </div>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                  <p className="text-[11px] text-[#525252] dark:text-[#D4D4D4]">
                     {editableDraft.approvalRequest.reason}
                   </p>
-                  <div className="p-2 rounded-lg bg-white/80 dark:bg-slate-950/60 font-mono text-[10px] text-slate-600 dark:text-slate-400 break-words">
+                  <div className="p-2 rounded-lg bg-white/80 dark:bg-[#0A0A0A]/60 font-mono text-[10px] text-[#525252] dark:text-[#737373] break-words">
                     {editableDraft.approvalRequest.proposedPayload}
                   </div>
                 </div>
@@ -758,7 +757,7 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
 
         {/* Bottom Action Footer */}
         {editableDraft && (
-          <div className="p-4 border-t border-[#EEF2F7] dark:border-slate-800 bg-[#FAFBFD] dark:bg-slate-900/70 space-y-2">
+          <div className="p-4 border-t border-[#E5E5E5] dark:border-[#262626] bg-[#FAFAFA] dark:bg-[#161616]/70 space-y-2">
             {!activeMessage?.createdWorkflowId ? (
               <div className="flex flex-col sm:flex-row gap-2">
                 {editableDraft.approvalRequest ? (
@@ -766,7 +765,7 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                     type="button"
                     disabled={committing}
                     onClick={() => void handleCommit(true)}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60"
                   >
                     {committing ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -783,8 +782,8 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                   onClick={() => void handleCommit(false)}
                   className={`flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60 ${
                     editableDraft.approvalRequest
-                      ? 'border border-[#DDE4F2] dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      ? 'border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616] text-[#404040] dark:text-[#E5E5E5] hover:bg-[#FAFAFA]'
+                      : 'bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111]'
                   }`}
                 >
                   <Play className="w-3.5 h-3.5" />
@@ -809,7 +808,7 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onNavigate('approvals')}
-                  className="px-4 py-2.5 rounded-xl border border-[#DDE4F2] dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616] text-xs font-medium text-[#404040] dark:text-[#E5E5E5] cursor-pointer"
                 >
                   Open Approvals Queue
                 </button>

@@ -124,26 +124,26 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         ].map((kpi) => (
           <div
             key={kpi.label}
-            className="rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5"
+            className="rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-5"
           >
-            <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            <div className="text-xs font-medium text-[#737373] dark:text-[#737373]">
               {kpi.label}
             </div>
-            <div className="font-display text-3xl font-bold text-slate-900 dark:text-white tabular-nums mt-2">
+            <div className="font-display text-3xl font-bold text-[#111111] dark:text-white tabular-nums mt-2">
               {kpi.value}
             </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{kpi.sub}</div>
+            <div className="text-[11px] text-[#737373] dark:text-[#737373] mt-1">{kpi.sub}</div>
           </div>
         ))}
       </div>
 
       {/* Main Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        <div className="lg:col-span-7 rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5">
-          <h3 className="font-display text-sm font-bold text-slate-900 dark:text-white mb-1">
+        <div className="lg:col-span-7 rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-5">
+          <h3 className="font-display text-sm font-bold text-[#111111] dark:text-white mb-1">
             Department Activity (Live Workflows & Tasks)
           </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+          <p className="text-xs text-[#737373] dark:text-[#737373] mb-4">
             Computed directly from active Firestore workflows and assigned tasks
           </p>
           <div className="h-72">
@@ -170,11 +170,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           </div>
         </div>
 
-        <div className="lg:col-span-5 rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5">
-          <h3 className="font-display text-sm font-bold text-slate-900 dark:text-white mb-1">
+        <div className="lg:col-span-5 rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-5">
+          <h3 className="font-display text-sm font-bold text-[#111111] dark:text-white mb-1">
             Workflow Trigger Distribution
           </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+          <p className="text-xs text-[#737373] dark:text-[#737373] mb-4">
             Breakdown of Voice, Chat, Manual, Scheduled, and Webhook runs
           </p>
           <div className="h-56">
@@ -199,7 +199,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           </div>
           <div className="flex flex-wrap justify-center gap-3 text-xs mt-2">
             {triggerData.map((t, idx) => (
-              <span key={t.name} className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+              <span key={t.name} className="inline-flex items-center gap-1.5 text-[#525252] dark:text-[#D4D4D4]">
                 <span
                   className="w-2.5 h-2.5 rounded-full"
                   style={{ backgroundColor: CHART_COLORS[idx % CHART_COLORS.length] }}
@@ -213,11 +213,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
       </div>
 
       {/* 7-Day Execution Trend */}
-      <div className="rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5">
-        <h3 className="font-display text-sm font-bold text-slate-900 dark:text-white mb-1">
+      <div className="rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-5">
+        <h3 className="font-display text-sm font-bold text-[#111111] dark:text-white mb-1">
           7-Day Execution & Failure Trend
         </h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+        <p className="text-xs text-[#737373] dark:text-[#737373] mb-4">
           Derived from immutable Firestore audit log timestamps
         </p>
         <div className="h-64">

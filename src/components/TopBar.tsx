@@ -1,15 +1,25 @@
 import React, { useState } from 'react';
 import {
   Bell,
-  Bot,
+  Download,
+  Globe,
   LogOut,
   Menu,
   Moon,
-  Plus,
+  Search,
   Sparkles,
   Sun,
+  X,
 } from 'lucide-react';
-import { ApprovalItem, NavSection, UserProfile, Workflow } from '../types';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import {
+  ApprovalItem,
+  NavSection,
+  NotificationItem,
+  UserProfile,
+  Workflow,
+  Workspace,
+} from '../types';
 
 interface TopBarProps {
   activeSection: NavSection;
@@ -23,72 +33,99 @@ interface TopBarProps {
   onToggleAiDrawer: () => void;
   pendingApprovals: ApprovalItem[];
   failedWorkflows: Workflow[];
+  notifications?: NotificationItem[];
+  onMarkNotificationRead?: (id: string) => void;
+  onMarkAllNotificationsRead?: () => void;
+  onArchiveNotification?: (id: string) => void;
   onNavigate: (section: NavSection) => void;
   profile: UserProfile | null;
   userPhotoUrl?: string | null;
   onSignOut: () => void;
+  onInstallPwa?: () => void;
+  onViewPublicWebsite?: () => void;
+  searchQuery?: string;
+  onSearchChange?: (q: string) => void;
+  workspaces?: Workspace[];
+  activeWorkspaceId?: string;
+  onSelectWorkspace?: (workspaceId: string) => void;
+  onCreateNewOrg?: () => void;
 }
-
-const SECTION_LABELS: Record<NavSection, { group: string; title: string }> = {
-  overview: { group: 'Overview', title: 'Dashboard' },
-  command_center: { group: 'Overview', title: 'AI Command Center' },
-  workflows: { group: 'Operations', title: 'Workflows' },
-  tasks: { group: 'Operations', title: 'Tasks' },
-  knowledge_base: { group: 'Intelligence', title: 'Knowledge Base' },
-  approvals: { group: 'Governance', title: 'Approvals Center' },
-  analytics: { group: 'Intelligence', title: 'Analytics' },
-  integrations: { group: 'Platform', title: 'Integrations' },
-  settings: { group: 'Platform', title: 'Settings' },
-};
 
 export const TopBar: React.FC<TopBarProps> = ({
   activeSection,
   onOpenMobileMenu,
   darkMode,
   onToggleDarkMode,
-  onOpenNewWorkflow,
-  onRequestInsight,
-  insightLoading,
   aiDrawerOpen,
   onToggleAiDrawer,
   pendingApprovals,
   failedWorkflows,
+  notifications = [],
+  onMarkNotificationRead,
+  onMarkAllNotificationsRead,
+  onArchiveNotification,
   onNavigate,
   profile,
   userPhotoUrl,
   onSignOut,
+  onInstallPwa,
+  onViewPublicWebsite,
+  searchQuery = '',
+  onSearchChange,
+  workspaces = [],
+  activeWorkspaceId = '',
+  onSelectWorkspace,
+  onCreateNewOrg,
 }) => {
   const [notifOpen, setNotifOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const crumb = SECTION_LABELS[activeSection];
-  const alertCount = pendingApprovals.length + failedWorkflows.length;
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  const alertCount = pendingApprovals.length + failedWorkflows.length + unreadCount;
+  const activeWs = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
 
   return (
-    <header className="sticky top-0 z-30 h-16 bg-white/90 dark:bg-[#0F172A]/90 backdrop-blur-md border-b border-[#E6ECF5] dark:border-slate-800/90 px-4 sm:px-6 flex items-center justify-between gap-4">
-      {/* Left: Mobile toggle + Breadcrumb */}
-      <div className="flex items-center gap-3 min-w-0">
+    <header className="h-12 bg-[#FAFAFA] dark:bg-[#0E0E0E] border-b border-[#E5E5E5] dark:border-[#262626] px-3 sm:px-4 flex items-center justify-between gap-3 shrink-0 z-30">
+      {/* Left: Mobile Menu + Top-Left Workspace Switcher (matching Plane) */}
+      <div className="flex items-center gap-2 min-w-0">
         <button
           type="button"
           onClick={onOpenMobileMenu}
           aria-label="Open menu"
-          className="lg:hidden flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300"
+          className="lg:hidden flex items-center justify-center w-8 h-8 rounded-md border border-[#E5E5E5] dark:border-[#262626] bg-white dark:bg-[#161616] text-[#525252] dark:text-[#D4D4D4]"
         >
           <Menu className="w-4 h-4" />
         </button>
 
-        <div className="flex items-center gap-2 text-sm min-w-0">
-          <span className="text-slate-400 dark:text-slate-500 hidden sm:inline whitespace-nowrap">
-            {crumb.group}
+        {workspaces.length > 0 && onSelectWorkspace && onCreateNewOrg && (
+          <WorkspaceSwitcher
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            onSelectWorkspace={onSelectWorkspace}
+            onCreateNewOrg={onCreateNewOrg}
+            compactHeader
+          />
+        )}
+      </div>
+
+      {/* Center: Global Search Input */}
+      <div className="hidden md:flex flex-1 max-w-md mx-auto">
+        <div className="relative w-full">
+          <Search className="w-3.5 h-3.5 text-[#737373] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => onSearchChange?.(e.target.value)}
+            placeholder={`Search ${activeWs?.name || 'workspace'}...`}
+            className="w-full h-8 pl-8 pr-10 text-xs rounded-md bg-white dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] text-[#111111] dark:text-white placeholder:text-[#737373] focus:outline-none focus:border-[#111111] dark:focus:border-white transition-colors"
+          />
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-[#737373]">
+            ⌘K
           </span>
-          <span className="text-slate-300 dark:text-slate-600 hidden sm:inline">/</span>
-          <h1 className="font-display font-semibold text-slate-900 dark:text-white truncate">
-            {crumb.title}
-          </h1>
         </div>
       </div>
 
-      {/* Right: Functional Enterprise Controls */}
-      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+      {/* Right: Minimal Utility Controls + AI Assistant Toggle + Avatar */}
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         {/* Notifications Popover */}
         <div className="relative">
           <button
@@ -98,32 +135,84 @@ export const TopBar: React.FC<TopBarProps> = ({
               setMenuOpen(false);
             }}
             aria-label="Notifications"
-            className="relative flex items-center justify-center w-9 h-9 rounded-lg border border-[#E6ECF5] dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            className="relative flex items-center justify-center w-8 h-8 rounded-md text-[#525252] dark:text-[#D4D4D4] hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] transition-colors cursor-pointer"
           >
             <Bell className="w-4 h-4" />
             {alertCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-mono font-semibold flex items-center justify-center tabular-nums">
+              <span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-[#111111] dark:bg-white text-white dark:text-[#111111] text-[9px] font-mono font-semibold flex items-center justify-center tabular-nums">
                 {alertCount}
               </span>
             )}
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 rounded-xl shadow-lg p-3 z-50">
-              <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-xs font-semibold text-slate-900 dark:text-white">
-                  Actionable Notifications
+            <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-xl shadow-lg p-3 z-50">
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#E5E5E5] dark:border-[#262626]">
+                <span className="text-xs font-semibold text-[#111111] dark:text-white">
+                  Notifications
                 </span>
-                <span className="text-[11px] font-mono text-slate-400 tabular-nums">
-                  {alertCount} items
-                </span>
+                <div className="flex items-center gap-2">
+                  {unreadCount > 0 && onMarkAllNotificationsRead && (
+                    <button
+                      type="button"
+                      onClick={onMarkAllNotificationsRead}
+                      className="text-[11px] text-[#111111] dark:text-white hover:underline cursor-pointer"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                  <span className="text-[11px] font-mono text-[#737373] tabular-nums">
+                    {alertCount}
+                  </span>
+                </div>
               </div>
-              {alertCount === 0 ? (
-                <div className="py-6 text-center text-xs text-slate-500 dark:text-slate-400">
-                  All approvals and workflow runs are clear.
+              {alertCount === 0 && notifications.length === 0 ? (
+                <div className="py-6 text-center text-xs text-[#737373]">
+                  No notifications yet. Events from your workflows and team will appear here.
                 </div>
               ) : (
                 <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                  {notifications.map((ntf) => (
+                    <div
+                      key={ntf.id}
+                      className={`p-2.5 rounded-lg border transition-colors ${
+                        ntf.read
+                          ? 'border-transparent hover:bg-[#FAFAFA] dark:hover:bg-[#1F1F1F]/60'
+                          : 'border-[#E5E5E5] dark:border-[#262626] bg-[#FAFAFA] dark:bg-[#1A1A1A]'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onMarkNotificationRead?.(ntf.id);
+                            if (ntf.linkSection) {
+                              setNotifOpen(false);
+                              onNavigate(ntf.linkSection);
+                            }
+                          }}
+                          className="text-left flex-1 min-w-0 cursor-pointer"
+                        >
+                          <div className="text-xs font-semibold text-[#111111] dark:text-white truncate">
+                            {ntf.title}
+                          </div>
+                          <div className="text-[11px] text-[#737373] line-clamp-2 mt-0.5">
+                            {ntf.message}
+                          </div>
+                        </button>
+                        {onArchiveNotification && (
+                          <button
+                            type="button"
+                            onClick={() => onArchiveNotification(ntf.id)}
+                            title="Archive notification"
+                            className="text-[10px] text-[#737373] hover:text-[#111111] dark:hover:text-white px-1 cursor-pointer"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                   {pendingApprovals.map((apr) => (
                     <button
                       key={apr.id}
@@ -132,17 +221,15 @@ export const TopBar: React.FC<TopBarProps> = ({
                         setNotifOpen(false);
                         onNavigate('approvals');
                       }}
-                      className="w-full text-left p-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/70 transition-colors cursor-pointer"
+                      className="w-full text-left p-2.5 rounded-lg hover:bg-[#FAFAFA] dark:hover:bg-[#1F1F1F]/70 transition-colors cursor-pointer"
                     >
                       <div className="text-xs font-medium text-amber-700 dark:text-amber-400">
                         Approval Required · {apr.riskLevel} risk
                       </div>
-                      <div className="text-xs font-semibold text-slate-900 dark:text-white truncate mt-0.5">
+                      <div className="text-xs font-semibold text-[#111111] dark:text-white truncate mt-0.5">
                         {apr.workflowTitle}
                       </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                        {apr.actionType}
-                      </div>
+                      <div className="text-[11px] text-[#737373] truncate">{apr.actionType}</div>
                     </button>
                   ))}
                   {failedWorkflows.map((wf) => (
@@ -153,12 +240,12 @@ export const TopBar: React.FC<TopBarProps> = ({
                         setNotifOpen(false);
                         onNavigate('workflows');
                       }}
-                      className="w-full text-left p-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/70 transition-colors cursor-pointer"
+                      className="w-full text-left p-2.5 rounded-lg hover:bg-[#FAFAFA] dark:hover:bg-[#1F1F1F]/70 transition-colors cursor-pointer"
                     >
                       <div className="text-xs font-medium text-red-600 dark:text-red-400">
                         Workflow Failed · {wf.code}
                       </div>
-                      <div className="text-xs font-semibold text-slate-900 dark:text-white truncate mt-0.5">
+                      <div className="text-xs font-semibold text-[#111111] dark:text-white truncate mt-0.5">
                         {wf.title}
                       </div>
                     </button>
@@ -169,53 +256,45 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
 
+        {/* PWA Install Button */}
+        {onInstallPwa && (
+          <button
+            type="button"
+            onClick={onInstallPwa}
+            title="Install FLOWSTATE standalone app"
+            aria-label="Install app"
+            className="hidden sm:flex items-center justify-center w-8 h-8 rounded-md text-[#525252] dark:text-[#D4D4D4] hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] transition-colors cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+          </button>
+        )}
+
         {/* Light / Dark Theme Toggle */}
         <button
           type="button"
           onClick={onToggleDarkMode}
           title={darkMode ? 'Switch to Light theme' : 'Switch to Dark theme'}
           aria-label="Toggle theme"
-          className="flex items-center justify-center w-9 h-9 rounded-lg border border-[#E6ECF5] dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+          className="flex items-center justify-center w-8 h-8 rounded-md text-[#525252] dark:text-[#D4D4D4] hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] transition-colors cursor-pointer"
         >
           {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
 
-        {/* Get AI Insight button (Screenshot 1) */}
-        <button
-          type="button"
-          onClick={onRequestInsight}
-          disabled={insightLoading}
-          className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-indigo-200/80 dark:border-indigo-900/70 bg-gradient-to-r from-[#F5F3FF] to-[#EEF4FF] dark:from-indigo-950/60 dark:to-blue-950/60 text-xs font-medium text-indigo-700 dark:text-indigo-300 hover:brightness-95 transition-all cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-60"
-        >
-          <span>{insightLoading ? 'Analyzing...' : 'Get AI Insight'}</span>
-          <Sparkles className="w-3.5 h-3.5" />
-        </button>
-
-        {/* Docked AI Assistant Toggle (Screenshot 3) */}
+        {/* Docked AI Assistant Toggle (Plane Style) */}
         {activeSection !== 'command_center' && (
           <button
             type="button"
             onClick={onToggleAiDrawer}
-            className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+            className={`inline-flex items-center gap-1.5 px-2.5 h-8 rounded-md border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               aiDrawerOpen
-                ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300'
-                : 'border-[#E6ECF5] dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                ? 'border-[#D4D4D4] dark:border-[#333333] bg-white dark:bg-[#1A1A1A] text-[#111111] dark:text-white'
+                : 'border-[#E5E5E5] dark:border-[#262626] bg-white dark:bg-[#161616] text-[#525252] dark:text-[#D4D4D4] hover:text-[#111111] dark:hover:text-white'
             }`}
           >
-            <Bot className="w-3.5 h-3.5" />
-            <span>AI Assistant</span>
+            {aiDrawerOpen ? <X className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+            <span>AI assistant</span>
           </button>
         )}
-
-        {/* Primary CTA (Screenshot 2 & 3) */}
-        <button
-          type="button"
-          onClick={onOpenNewWorkflow}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>New Workflow</span>
-        </button>
 
         {/* Account Menu */}
         <div className="relative">
@@ -225,23 +304,23 @@ export const TopBar: React.FC<TopBarProps> = ({
               setMenuOpen((v) => !v);
               setNotifOpen(false);
             }}
-            className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            className="flex items-center p-0.5 rounded-full hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] transition-colors cursor-pointer"
           >
             <img
               src={userPhotoUrl || '/src/assets/images/avatar_enterprise_lead_1795690516596.jpg'}
               alt={profile?.displayName || 'User'}
               referrerPolicy="no-referrer"
-              className="w-7 h-7 rounded-full object-cover border border-slate-200 dark:border-slate-700"
+              className="w-7 h-7 rounded-full object-cover border border-[#E5E5E5] dark:border-[#333333]"
             />
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 rounded-xl shadow-lg p-2 z-50">
-              <div className="px-2.5 py-2 border-b border-slate-100 dark:border-slate-800 mb-1">
-                <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+            <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-xl shadow-lg p-2 z-50">
+              <div className="px-2.5 py-2 border-b border-[#E5E5E5] dark:border-[#262626] mb-1">
+                <div className="text-xs font-semibold text-[#111111] dark:text-white truncate">
                   {profile?.displayName || 'Operations Lead'}
                 </div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                <div className="text-[11px] text-[#737373]">
                   Role: {profile?.role || 'Operator'}
                 </div>
               </div>
@@ -251,10 +330,23 @@ export const TopBar: React.FC<TopBarProps> = ({
                   setMenuOpen(false);
                   onNavigate('settings');
                 }}
-                className="w-full text-left px-2.5 py-2 rounded-lg text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                className="w-full text-left px-2.5 py-2 rounded-lg text-xs text-[#404040] dark:text-[#D4D4D4] hover:bg-[#F2F2F2] dark:hover:bg-[#1F1F1F] cursor-pointer"
               >
                 Workspace Settings
               </button>
+              {onViewPublicWebsite && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onViewPublicWebsite();
+                  }}
+                  className="w-full flex items-center gap-2 text-left px-2.5 py-2 rounded-lg text-xs text-[#404040] dark:text-[#D4D4D4] hover:bg-[#F2F2F2] dark:hover:bg-[#1F1F1F] cursor-pointer"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Public Website</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

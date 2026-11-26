@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
 import {
   collection,
@@ -14,13 +14,30 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../lib/firebase';
-import { ensureWorkspaceSeeded } from '../lib/seedData';
-import { apiPostJson } from '../lib/api';
+import {
+  apiDeleteJson,
+  apiGetJson,
+  apiPatchJson,
+  apiPostJson,
+  getStoredSessionToken,
+  setStoredSessionToken,
+} from '../lib/api';
+import {
+  getActiveWorkspaceId,
+  loadUserWorkspaces,
+  saveOrgOnboarding,
+  savePersonalOnboarding,
+  saveUserWorkspaces,
+  setActiveWorkspaceId,
+} from '../lib/workspaceStore';
 import {
   ApprovalItem,
   AuditLogItem,
   IntegrationItem,
   KnowledgeDoc,
+  NotificationItem,
+  OrganizationOnboardingData,
+  PersonalOnboardingData,
   PriorityLevel,
   ProposedWorkflowDraft,
   TaskItem,
@@ -31,6 +48,8 @@ import {
   UserRole,
   Workflow,
   WorkflowStatus,
+  Workspace,
+  WorkspaceRole,
 } from '../types';
 
 function tsToMs(val: unknown): number {
@@ -62,16 +81,423 @@ export function useFlowstateData() {
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
+  // Multi-tenant workspace management
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [activeWorkspaceId, setActiveWorkspaceIdState] = useState<string>('');
+  const [needsWorkspaceSetup, setNeedsWorkspaceSetup] = useState<boolean>(false);
+  const [onboardingNeeded, setOnboardingNeeded] = useState<boolean>(false);
+  const [onboardingType, setOnboardingType] = useState<'personal' | 'organization' | null>(null);
+  const [pendingInvitations, setPendingInvitations] = useState<
+    { id: string; workspaceName: string; roleId: WorkspaceRole; department: string; invitedByName: string }[]
+  >([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [welcomeSeen, setWelcomeSeen] = useState<boolean>(true);
+  const [tutorialCompleted, setTutorialCompleted] = useState<boolean>(true);
+  const [tutorialStep, setTutorialStep] = useState<number>(1);
+
+  // Helper to map backend workspace summary into frontend Workspace type
+  const mapBackendWorkspaces = useCallback(
+    (
+      rows: {
+        workspace: { id: string; name: string; type: 'personal' | 'organization'; ownerId: string; onboardingCompleted: boolean; createdAtMs: number; updatedAtMs: number };
+        role: WorkspaceRole;
+        organization: { logoUrl?: string; industry?: string; website?: string; country?: string; size?: string } | null;
+        departments: { name: string }[];
+      }[]
+    ): Workspace[] => {
+      return rows.map((r) => ({
+        id: r.workspace.id,
+        name: r.workspace.name,
+        type: r.workspace.type,
+        ownerId: r.workspace.ownerId,
+        role: r.role,
+        logoUrl: r.organization?.logoUrl,
+        industry: r.organization?.industry,
+        website: r.organization?.website,
+        country: r.organization?.country,
+        size: r.organization?.size,
+        departments: r.departments.map((d) => d.name),
+        members: [],
+        onboardingCompleted: r.workspace.onboardingCompleted,
+        createdAtMs: r.workspace.createdAtMs,
+        updatedAtMs: r.workspace.updatedAtMs,
+      }));
+    },
+    []
+  );
+
+  // Sync backend session (for email/password auth or OAuth)
+  const syncBackendSession = useCallback(async () => {
+    const token = getStoredSessionToken();
+    if (!token && !auth.currentUser) return;
+    try {
+      const me = await apiGetJson<{
+        user: { uid: string; email: string; emailVerified: boolean; displayName: string };
+        profile: UserProfile & { userId?: string; activeWorkspaceId?: string };
+        workspaces: {
+          workspace: { id: string; name: string; type: 'personal' | 'organization'; ownerId: string; onboardingCompleted: boolean; createdAtMs: number; updatedAtMs: number };
+          role: WorkspaceRole;
+          organization: { industry?: string; website?: string; country?: string; size?: string } | null;
+          departments: { name: string }[];
+        }[];
+        pendingInvitations: { id: string; workspaceName: string; roleId: WorkspaceRole; department: string; invitedByName: string }[];
+      }>('/api/auth/me');
+
+      if (!auth.currentUser) {
+        // Synthetic Firebase-compatible user object for backend-authenticated session
+        setUser({
+          uid: me.user.uid,
+          email: me.user.email,
+          emailVerified: me.user.emailVerified,
+          displayName: me.user.displayName,
+          photoURL: null,
+        } as unknown as User);
+      }
+      setProfile({
+        ...me.profile,
+        uid: me.user.uid,
+        email: me.user.email,
+        role: me.workspaces[0]?.role || 'Owner',
+        department: 'Operations',
+        organizationName: me.workspaces[0]?.workspace.name || 'Personal Workspace',
+      });
+      setWelcomeSeen(Boolean(me.profile.welcomeSeen));
+      setTutorialCompleted(Boolean(me.profile.tutorialCompleted));
+      setTutorialStep(Number(me.profile.tutorialStep || 1));
+      setPendingInvitations(me.pendingInvitations || []);
+      if (me.workspaces && me.workspaces.length > 0) {
+        setNeedsWorkspaceSetup(false);
+        const mapped = mapBackendWorkspaces(me.workspaces);
+        setWorkspaces(mapped);
+        const targetId =
+          me.profile.activeWorkspaceId && mapped.some((w) => w.id === me.profile.activeWorkspaceId)
+            ? me.profile.activeWorkspaceId
+            : mapped[0].id;
+        setActiveWorkspaceIdState(targetId);
+        setActiveWorkspaceId(me.user.uid, targetId);
+        try {
+          const wsData = await apiGetJson<{
+            workflows: Workflow[];
+            tasks: TaskItem[];
+            documents: KnowledgeDoc[];
+            approvals: ApprovalItem[];
+            integrations: IntegrationItem[];
+            auditLogs: AuditLogItem[];
+            notifications: NotificationItem[];
+            members: { id: string; userId: string; name: string; roleId: WorkspaceRole; department: string; status: 'active' | 'suspended' }[];
+          }>(`/api/workspaces/${targetId}/data`);
+          setWorkflows(wsData.workflows || []);
+          setTasks(wsData.tasks || []);
+          setKnowledgeDocs(wsData.documents || []);
+          setApprovals(wsData.approvals || []);
+          setIntegrations(wsData.integrations || []);
+          setAuditLogs(wsData.auditLogs || []);
+          setNotifications(wsData.notifications || []);
+          setTeamMembers(
+            (wsData.members || []).map((m) => ({
+              id: m.id,
+              ownerId: m.userId,
+              workspaceId: targetId,
+              name: m.name,
+              role: m.roleId,
+              department: m.department,
+              status: m.status === 'active' ? 'active' : 'invited',
+              createdAtMs: Date.now(),
+              updatedAtMs: Date.now(),
+            }))
+          );
+        } catch {
+          // Non-blocking
+        }
+      } else {
+        setWorkspaces([]);
+        setActiveWorkspaceIdState('');
+        setWorkflows([]);
+        setTasks([]);
+        setKnowledgeDocs([]);
+        setApprovals([]);
+        setIntegrations([]);
+        setAuditLogs([]);
+        setNotifications([]);
+        setTeamMembers([]);
+        setNeedsWorkspaceSetup(true);
+      }
+      setAuthReady(true);
+    } catch {
+      // Token expired or invalid
+      setStoredSessionToken(null);
+    }
+  }, [mapBackendWorkspaces]);
+
+  // Check backend session on mount
+  useEffect(() => {
+    if (getStoredSessionToken()) {
+      void syncBackendSession();
+    }
+  }, [syncBackendSession]);
+
+  // Sync workspaces whenever user changes (with local fallback)
+  useEffect(() => {
+    if (!user) {
+      setWorkspaces([]);
+      setActiveWorkspaceIdState('');
+      return;
+    }
+    if (workspaces.length === 0) {
+      const list = loadUserWorkspaces(user.uid, profile?.displayName || user.displayName || 'Operations Lead');
+      setWorkspaces(list);
+      const savedActiveId = getActiveWorkspaceId(user.uid);
+      const found = list.find((w) => w.id === savedActiveId);
+      setActiveWorkspaceIdState(found ? found.id : list[0].id);
+    }
+  }, [user, profile?.displayName, workspaces.length]);
+
+  const activeWorkspace = useMemo(() => {
+    return workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0] || null;
+  }, [workspaces, activeWorkspaceId]);
+
+  const switchWorkspace = useCallback(
+    async (id: string) => {
+      if (!user) return;
+      setActiveWorkspaceIdState(id);
+      setActiveWorkspaceId(user.uid, id);
+      try {
+        const switched = await apiPostJson<{
+          workflows: Workflow[];
+          tasks: TaskItem[];
+          documents: KnowledgeDoc[];
+          approvals: ApprovalItem[];
+          integrations: IntegrationItem[];
+          auditLogs: AuditLogItem[];
+          notifications: NotificationItem[];
+          members: { id: string; userId: string; name: string; roleId: WorkspaceRole; department: string; status: 'active' | 'suspended' }[];
+        }>(`/api/workspaces/${id}/switch`, {});
+        if (getStoredSessionToken()) {
+          // Clear previous workspace data and load strictly authorized workspace data
+          setWorkflows(switched.workflows || []);
+          setTasks(switched.tasks || []);
+          setKnowledgeDocs(switched.documents || []);
+          setApprovals(switched.approvals || []);
+          setIntegrations(switched.integrations || []);
+          setAuditLogs(switched.auditLogs || []);
+          setNotifications(switched.notifications || []);
+          setTeamMembers(
+            (switched.members || []).map((m) => ({
+              id: m.id,
+              ownerId: m.userId,
+              workspaceId: id,
+              name: m.name,
+              role: m.roleId,
+              department: m.department,
+              status: m.status === 'active' ? 'active' : 'invited',
+              createdAtMs: Date.now(),
+              updatedAtMs: Date.now(),
+            }))
+          );
+        }
+      } catch {
+        // Local workspace switch fallback
+      }
+    },
+    [user]
+  );
+
+  const createOrganizationWorkspace = useCallback(
+    async (orgData: Partial<Workspace>) => {
+      if (!user) throw new Error('Must be signed in to create workspace');
+      const res = await apiPostJson<{
+        workspace: { id: string; name: string; createdAtMs: number; updatedAtMs: number };
+      }>('/api/workspaces/organization', {
+        organizationName: orgData.name || 'New Organization',
+        logoUrl: orgData.logoUrl || '',
+        industry: orgData.industry || 'Technology',
+        website: orgData.website || '',
+        country: orgData.country || 'United States',
+        size: orgData.size || '1-10',
+        departments: orgData.departments || ['Customer Support', 'IT Operations', 'Billing & Finance'],
+        onboardingCompleted: true,
+      });
+
+      const newWs: Workspace = {
+        id: res.workspace.id,
+        name: res.workspace.name,
+        type: 'organization',
+        ownerId: user.uid,
+        role: 'Owner',
+        logoUrl: orgData.logoUrl || '',
+        industry: orgData.industry || 'Technology',
+        website: orgData.website || '',
+        country: orgData.country || 'United States',
+        size: orgData.size || '1-10',
+        departments: orgData.departments || ['Customer Support', 'IT Operations', 'Billing & Finance'],
+        members: [],
+        onboardingCompleted: true,
+        createdAtMs: res.workspace.createdAtMs,
+        updatedAtMs: res.workspace.updatedAtMs,
+      };
+      const nextList = [...workspaces, newWs];
+      setWorkspaces(nextList);
+      saveUserWorkspaces(user.uid, nextList);
+      await switchWorkspace(newWs.id);
+      return newWs;
+    },
+    [user, workspaces, switchWorkspace]
+  );
+
+  const createDepartment = useCallback(
+    async (name: string) => {
+      const trimmed = name.trim();
+      if (!user || !activeWorkspace || !trimmed) return;
+      await apiPostJson(`/api/workspaces/${activeWorkspace.id}/departments`, {
+        name: trimmed,
+      });
+      setWorkspaces((prev) => {
+        const next = prev.map((w) => {
+          if (w.id !== activeWorkspace.id) return w;
+          const existing = w.departments || [];
+          if (existing.some((d) => d.toLowerCase() === trimmed.toLowerCase())) return w;
+          return { ...w, departments: [...existing, trimmed] };
+        });
+        saveUserWorkspaces(user.uid, next);
+        return next;
+      });
+    },
+    [user, activeWorkspace]
+  );
+
+  const inviteWorkspaceMember = useCallback(
+    async (email: string, role: WorkspaceRole, dept: string) => {
+      if (!user || !activeWorkspace) return;
+      await apiPostJson(`/api/workspaces/${activeWorkspace.id}/invitations`, {
+        email,
+        role,
+        department: dept,
+      });
+    },
+    [user, activeWorkspace]
+  );
+
+  const respondToInvitation = useCallback(
+    async (invitationId: string, action: 'accept' | 'reject') => {
+      const res = await apiPostJson<{
+        workspaces: Parameters<typeof mapBackendWorkspaces>[0];
+        pendingInvitations: typeof pendingInvitations;
+      }>(`/api/invitations/${invitationId}/respond`, { action });
+      setPendingInvitations(res.pendingInvitations || []);
+      if (res.workspaces) {
+        setWorkspaces(mapBackendWorkspaces(res.workspaces));
+      }
+    },
+    [mapBackendWorkspaces]
+  );
+
+  const startOnboarding = useCallback((type: 'personal' | 'organization') => {
+    setOnboardingType(type);
+    setOnboardingNeeded(true);
+  }, []);
+
+  const skipOnboarding = useCallback(() => {
+    setOnboardingNeeded(false);
+  }, []);
+
+  const completePersonalOnboarding = useCallback(
+    async (onboardingData: PersonalOnboardingData) => {
+      if (!user) return;
+      savePersonalOnboarding(user.uid, onboardingData);
+      try {
+        await apiPatchJson('/api/profile', {
+          displayName: onboardingData.fullName,
+          jobTitle: onboardingData.jobTitle,
+          professionalBackground: onboardingData.professionalBackground,
+          profession: onboardingData.profession,
+          responsibilities: onboardingData.responsibilities,
+          typeOfWork: onboardingData.typeOfWork,
+          automationGoals: onboardingData.automationGoals,
+          existingTools: onboardingData.existingTools,
+          interactionPreference: onboardingData.interactionPreference,
+          voiceLanguage: onboardingData.languagePreference,
+          personalOnboardingCompleted: true,
+        });
+        const wsRes = await apiPostJson<{
+          workspace: { id: string };
+          workspaces: Parameters<typeof mapBackendWorkspaces>[0];
+        }>('/api/workspaces/personal', {
+          name: `${onboardingData.fullName || 'Personal'}'s Workspace`,
+          onboardingCompleted: true,
+        });
+        const mapped = mapBackendWorkspaces(wsRes.workspaces);
+        setWorkspaces(mapped);
+        await switchWorkspace(wsRes.workspace.id);
+      } catch {
+        // Fallback if backend unreachable
+      }
+      setNeedsWorkspaceSetup(false);
+      setOnboardingNeeded(false);
+    },
+    [user, mapBackendWorkspaces, switchWorkspace]
+  );
+
+  const completeOrgOnboarding = useCallback(
+    async (onboardingData: OrganizationOnboardingData) => {
+      if (!user) return;
+      saveOrgOnboarding(user.uid, onboardingData);
+      try {
+        const res = await apiPostJson<{
+          workspace: { id: string };
+          workspaces: Parameters<typeof mapBackendWorkspaces>[0];
+        }>('/api/workspaces/organization', {
+          organizationName: onboardingData.organizationName,
+          logoUrl: onboardingData.logoUrl || '',
+          industry: onboardingData.industry,
+          website: onboardingData.website,
+          country: onboardingData.country,
+          size: onboardingData.organizationSize,
+          ownerRoleTitle: onboardingData.ownerRole,
+          departments: onboardingData.departments,
+          businessProcesses: onboardingData.businessProcesses,
+          automationRequirements: onboardingData.automationRequirements,
+          existingTools: onboardingData.existingSoftwareTools,
+          teamInvitations: onboardingData.teamInvitations,
+          onboardingCompleted: true,
+        });
+        const mapped = mapBackendWorkspaces(res.workspaces);
+        setWorkspaces(mapped);
+        await switchWorkspace(res.workspace.id);
+      } catch {
+        // Fallback
+      }
+      setNeedsWorkspaceSetup(false);
+      setOnboardingNeeded(false);
+    },
+    [user, mapBackendWorkspaces, switchWorkspace]
+  );
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (nextUser) => {
+      if (getStoredSessionToken()) {
+        // Backend email/password session active
+        setAuthReady(true);
+        return;
+      }
       setUser(nextUser);
       setAuthReady(true);
       if (nextUser) {
+        const existingLocal = loadUserWorkspaces(nextUser.uid);
+        if (existingLocal.length === 0) {
+          setNeedsWorkspaceSetup(true);
+          setWorkspaces([]);
+          setWorkflows([]);
+          setTasks([]);
+          setKnowledgeDocs([]);
+          setApprovals([]);
+          setIntegrations([]);
+          setAuditLogs([]);
+        }
         setSeeding(true);
         try {
-          await ensureWorkspaceSeeded(nextUser);
+          await syncBackendSession();
         } catch (err) {
-          console.error('Seed error:', err);
+          console.error('Session sync error:', err);
         } finally {
           setSeeding(false);
         }
@@ -84,13 +510,14 @@ export function useFlowstateData() {
         setIntegrations([]);
         setAuditLogs([]);
         setTeamMembers([]);
+        setNotifications([]);
       }
     });
     return () => unsub();
-  }, []);
+  }, [syncBackendSession]);
 
   useEffect(() => {
-    if (!authReady || !user) return;
+    if (!authReady || !user || !auth.currentUser || getStoredSessionToken() || needsWorkspaceSetup || workspaces.length === 0) return;
     const uid = user.uid;
 
     const unsubProfile = onSnapshot(
@@ -327,7 +754,12 @@ export function useFlowstateData() {
   }, []);
 
   const signOutUser = useCallback(async () => {
-    await signOut(auth);
+    setStoredSessionToken(null);
+    setUser(null);
+    setProfile(null);
+    setWorkspaces([]);
+    setPendingInvitations([]);
+    await signOut(auth).catch(() => {});
   }, []);
 
   // --- Audit Helper ---
@@ -497,6 +929,14 @@ export function useFlowstateData() {
       steps: string[];
     }) => {
       if (!user) throw new Error('Not authenticated');
+      if (getStoredSessionToken() && activeWorkspace) {
+        const created = await apiPostJson<Workflow>(
+          `/api/workspaces/${activeWorkspace.id}/workflows`,
+          { ...input, status: 'draft', triggerType: 'manual' }
+        );
+        setWorkflows((prev) => [created, ...prev]);
+        return created.id;
+      }
       const wfId = makeId('wf');
       const wfCode = `FLW-${100 + workflows.length + 1}`;
       try {
@@ -539,6 +979,14 @@ export function useFlowstateData() {
   const updateWorkflowStatus = useCallback(
     async (workflow: Workflow, nextStatus: WorkflowStatus, note?: string) => {
       if (!user) return;
+      if (getStoredSessionToken() && activeWorkspace) {
+        const updated = await apiPatchJson<Workflow>(
+          `/api/workspaces/${activeWorkspace.id}/workflows/${workflow.id}`,
+          { status: nextStatus }
+        );
+        setWorkflows((prev) => prev.map((w) => (w.id === workflow.id ? updated : w)));
+        return;
+      }
       try {
         await updateDoc(doc(db, 'workflows', workflow.id), {
           status: nextStatus,
@@ -563,6 +1011,11 @@ export function useFlowstateData() {
   const deleteWorkflow = useCallback(
     async (workflow: Workflow) => {
       if (!user) return;
+      if (getStoredSessionToken() && activeWorkspace) {
+        await apiDeleteJson(`/api/workspaces/${activeWorkspace.id}/workflows/${workflow.id}`);
+        setWorkflows((prev) => prev.filter((w) => w.id !== workflow.id));
+        return;
+      }
       try {
         await deleteDoc(doc(db, 'workflows', workflow.id));
         await appendAuditLog({
@@ -596,6 +1049,14 @@ export function useFlowstateData() {
       requiresApproval?: boolean;
     }) => {
       if (!user) throw new Error('Not authenticated');
+      if (getStoredSessionToken() && activeWorkspace) {
+        const created = await apiPostJson<TaskItem>(
+          `/api/workspaces/${activeWorkspace.id}/tasks`,
+          input
+        );
+        setTasks((prev) => [created, ...prev]);
+        return created.id;
+      }
       const tId = makeId('tsk');
       const code = `TSK-${200 + tasks.length + 1}`;
       try {
@@ -938,6 +1399,11 @@ export function useFlowstateData() {
   const updateProfileSettings = useCallback(
     async (patch: Partial<Omit<UserProfile, 'uid' | 'role' | 'createdAt' | 'updatedAt'>>) => {
       if (!user) return;
+      if (getStoredSessionToken() || !auth.currentUser) {
+        const res = await apiPatchJson<{ profile: UserProfile }>('/api/profile', patch);
+        setProfile((prev) => (prev ? { ...prev, ...res.profile } : res.profile));
+        return;
+      }
       try {
         await updateDoc(doc(db, 'users', user.uid), {
           ...patch,
@@ -948,6 +1414,84 @@ export function useFlowstateData() {
       }
     },
     [user]
+  );
+
+  // --- Tutorial & Welcome Controls ---
+  const completeWelcome = useCallback(async () => {
+    setWelcomeSeen(true);
+    try {
+      await apiPatchJson('/api/profile', { welcomeSeen: true });
+    } catch {
+      // non-blocking
+    }
+  }, []);
+
+  const updateTutorialStep = useCallback(async (step: number) => {
+    setTutorialStep(step);
+    try {
+      await apiPatchJson('/api/profile', { tutorialStep: step });
+    } catch {
+      // non-blocking
+    }
+  }, []);
+
+  const completeTutorial = useCallback(async () => {
+    setTutorialCompleted(true);
+    setWelcomeSeen(true);
+    try {
+      await apiPatchJson('/api/profile', { welcomeSeen: true, tutorialCompleted: true, tutorialStep: 8 });
+    } catch {
+      // non-blocking
+    }
+  }, []);
+
+  const restartTutorial = useCallback(async () => {
+    setWelcomeSeen(true);
+    setTutorialCompleted(false);
+    setTutorialStep(1);
+    try {
+      await apiPatchJson('/api/profile', { tutorialCompleted: false, tutorialStep: 1 });
+    } catch {
+      // non-blocking
+    }
+  }, []);
+
+  // --- Notification Controls ---
+  const markNotificationRead = useCallback(
+    async (notifId: string) => {
+      if (!activeWorkspace) return;
+      setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, read: true } : n)));
+      await apiPatchJson(`/api/workspaces/${activeWorkspace.id}/notifications/${notifId}/read`, {}).catch(() => {});
+    },
+    [activeWorkspace]
+  );
+
+  const markAllNotificationsRead = useCallback(async () => {
+    if (!activeWorkspace) return;
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    await apiPostJson(`/api/workspaces/${activeWorkspace.id}/notifications/read-all`, {}).catch(() => {});
+  }, [activeWorkspace]);
+
+  const archiveNotification = useCallback(
+    async (notifId: string) => {
+      if (!activeWorkspace) return;
+      setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+      await apiDeleteJson(`/api/workspaces/${activeWorkspace.id}/notifications/${notifId}`).catch(() => {});
+    },
+    [activeWorkspace]
+  );
+
+  const executeWorkflow = useCallback(
+    async (workflowId: string, idempotencyKey?: string) => {
+      if (!activeWorkspace) throw new Error('No active workspace.');
+      const res = await apiPostJson<{ workflow: Workflow; duplicate: boolean }>(
+        `/api/workspaces/${activeWorkspace.id}/workflows/${workflowId}/execute`,
+        { idempotencyKey: idempotencyKey || `exec-${workflowId}-${Date.now()}` }
+      );
+      setWorkflows((prev) => prev.map((w) => (w.id === workflowId ? res.workflow : w)));
+      return res;
+    },
+    [activeWorkspace]
   );
 
   return {
@@ -963,6 +1507,35 @@ export function useFlowstateData() {
     integrations,
     auditLogs,
     teamMembers,
+    notifications,
+    welcomeSeen,
+    tutorialCompleted,
+    tutorialStep,
+    completeWelcome,
+    updateTutorialStep,
+    completeTutorial,
+    restartTutorial,
+    markNotificationRead,
+    markAllNotificationsRead,
+    archiveNotification,
+    executeWorkflow,
+    workspaces,
+    activeWorkspaceId,
+    activeWorkspace,
+    pendingInvitations,
+    switchWorkspace,
+    createOrganizationWorkspace,
+    createDepartment,
+    inviteWorkspaceMember,
+    respondToInvitation,
+    syncBackendSession,
+    needsWorkspaceSetup,
+    onboardingNeeded,
+    onboardingType,
+    startOnboarding,
+    skipOnboarding,
+    completePersonalOnboarding,
+    completeOrgOnboarding,
     signInWithGoogle,
     signOutUser,
     createWorkflowFromDraft,

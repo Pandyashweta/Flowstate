@@ -5,6 +5,7 @@ import { NavSection, OperationalInsight, PriorityLevel } from '../types';
 interface NewWorkflowModalProps {
   open: boolean;
   onClose: () => void;
+  departments?: string[];
   onCreateManual: (input: {
     title: string;
     description: string;
@@ -20,20 +21,17 @@ interface NewWorkflowModalProps {
 export const NewWorkflowModal: React.FC<NewWorkflowModalProps> = ({
   open,
   onClose,
+  departments = [],
   onCreateManual,
   onSwitchToVoice,
 }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('Customer Support');
+  const [category, setCategory] = useState(departments[0] || 'General');
   const [priority, setPriority] = useState<PriorityLevel>('high');
-  const [team, setTeam] = useState('Identity & Auth Engineering');
-  const [dueDate, setDueDate] = useState(
-    new Date(Date.now() + 86400000).toISOString().slice(0, 10)
-  );
-  const [stepsRaw, setStepsRaw] = useState(
-    'Search enterprise incident history\nDraft structured support ticket\nRoute for team approval'
-  );
+  const [team, setTeam] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [stepsRaw, setStepsRaw] = useState('');
   const [saving, setSaving] = useState(false);
 
   if (!open) return null;
@@ -67,15 +65,15 @@ export const NewWorkflowModal: React.FC<NewWorkflowModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+      <div className="relative z-10 w-full max-w-lg bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-2xl p-6 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between">
-          <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">
+          <h3 className="font-display text-base font-bold text-[#111111] dark:text-white">
             Create New Workflow
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 cursor-pointer"
+            className="text-[#737373] hover:text-[#525252] cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -87,27 +85,27 @@ export const NewWorkflowModal: React.FC<NewWorkflowModalProps> = ({
             onClose();
             onSwitchToVoice();
           }}
-          className="w-full p-3.5 rounded-xl bg-gradient-to-r from-[#EEF4FF] to-[#F3E8FF] dark:from-blue-950/60 dark:to-indigo-950/60 border border-blue-200/80 dark:border-blue-900 flex items-center justify-between text-left cursor-pointer hover:brightness-95"
+          className="w-full p-3.5 rounded-xl bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] hover:border-[#111111] dark:hover:border-white flex items-center justify-between text-left cursor-pointer transition-colors"
         >
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-[#111111] dark:bg-white text-white dark:text-[#111111] flex items-center justify-center">
               <Mic className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-xs font-semibold text-slate-900 dark:text-white">
+              <div className="text-xs font-semibold text-[#111111] dark:text-white">
                 Generate via Voice & AI Command Center
               </div>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400">
+              <div className="text-[11px] text-[#737373]">
                 Auto-search RAG docs, draft tasks, and queue approvals
               </div>
             </div>
           </div>
-          <ArrowRight className="w-4 h-4 text-blue-600" />
+          <ArrowRight className="w-4 h-4 text-[#111111] dark:text-white" />
         </button>
 
         <form onSubmit={handleSubmit} className="space-y-3 text-xs">
           <div>
-            <label className="block font-medium text-slate-600 dark:text-slate-300 mb-1">
+            <label className="block font-medium text-[#525252] dark:text-[#D4D4D4] mb-1">
               Workflow Title
             </label>
             <input
@@ -116,11 +114,11 @@ export const NewWorkflowModal: React.FC<NewWorkflowModalProps> = ({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g., Enterprise Login Incident Escalation"
-              className="w-full px-3 py-2 rounded-lg border border-[#DDE4F2] dark:border-slate-700 bg-white dark:bg-slate-900"
+              className="w-full px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
             />
           </div>
           <div>
-            <label className="block font-medium text-slate-600 dark:text-slate-300 mb-1">
+            <label className="block font-medium text-[#525252] dark:text-[#D4D4D4] mb-1">
               Objective / Description
             </label>
             <textarea
@@ -128,34 +126,35 @@ export const NewWorkflowModal: React.FC<NewWorkflowModalProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe what this workflow automates..."
-              className="w-full px-3 py-2 rounded-lg border border-[#DDE4F2] dark:border-slate-700 bg-white dark:bg-slate-900"
+              className="w-full px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-medium text-slate-600 dark:text-slate-300 mb-1">
+              <label className="block font-medium text-[#525252] dark:text-[#D4D4D4] mb-1">
                 Department
               </label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-[#DDE4F2] dark:border-slate-700 bg-white dark:bg-slate-900"
+                className="w-full px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
               >
-                <option value="Customer Support">Customer Support</option>
-                <option value="IT Operations">IT Operations</option>
-                <option value="Billing & Finance">Billing & Finance</option>
-                <option value="HR Management">HR Management</option>
-                <option value="Sales Ops">Sales Ops</option>
+                <option value="General">General</option>
+                {departments.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
-              <label className="block font-medium text-slate-600 dark:text-slate-300 mb-1">
+              <label className="block font-medium text-[#525252] dark:text-[#D4D4D4] mb-1">
                 Priority
               </label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as PriorityLevel)}
-                className="w-full px-3 py-2 rounded-lg border border-[#DDE4F2] dark:border-slate-700 bg-white dark:bg-slate-900"
+                className="w-full px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
               >
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
@@ -166,37 +165,38 @@ export const NewWorkflowModal: React.FC<NewWorkflowModalProps> = ({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-medium text-slate-600 dark:text-slate-300 mb-1">
+              <label className="block font-medium text-[#525252] dark:text-[#D4D4D4] mb-1">
                 Assigned Team
               </label>
               <input
                 type="text"
                 value={team}
                 onChange={(e) => setTeam(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-[#DDE4F2] dark:border-slate-700 bg-white dark:bg-slate-900"
+                placeholder="e.g., Operations"
+                className="w-full px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
               />
             </div>
             <div>
-              <label className="block font-medium text-slate-600 dark:text-slate-300 mb-1">
+              <label className="block font-medium text-[#525252] dark:text-[#D4D4D4] mb-1">
                 Target Due Date
               </label>
               <input
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-[#DDE4F2] dark:border-slate-700 bg-white dark:bg-slate-900"
+                className="w-full px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
               />
             </div>
           </div>
           <div>
-            <label className="block font-medium text-slate-600 dark:text-slate-300 mb-1">
+            <label className="block font-medium text-[#525252] dark:text-[#D4D4D4] mb-1">
               Ordered Steps (one per line)
             </label>
             <textarea
               rows={3}
               value={stepsRaw}
               onChange={(e) => setStepsRaw(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-[#DDE4F2] dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-[11px]"
+              className="w-full px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616] font-mono text-[11px]"
             />
           </div>
 
@@ -204,14 +204,14 @@ export const NewWorkflowModal: React.FC<NewWorkflowModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-[#E6ECF5] dark:border-slate-700 font-medium cursor-pointer"
+              className="px-4 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] font-medium cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 rounded-lg bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] font-semibold cursor-pointer disabled:opacity-50"
             >
               {saving ? 'Creating...' : 'Create Workflow'}
             </button>
@@ -240,18 +240,18 @@ export const InsightModal: React.FC<InsightModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+      <div className="relative z-10 w-full max-w-lg bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-2xl p-6 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">
+            <h3 className="font-display text-base font-bold text-[#111111] dark:text-white">
               FLOWSTATE Operational AI Insight
             </h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 cursor-pointer"
+            className="text-[#737373] hover:text-[#525252] cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -264,10 +264,10 @@ export const InsightModal: React.FC<InsightModalProps> = ({
         ) : insight ? (
           <div className="space-y-4 text-xs">
             <div className="p-4 rounded-xl bg-gradient-to-r from-[#F4F6FD] to-[#EEF4FF] dark:from-indigo-950/40 dark:to-blue-950/40 border border-indigo-100 dark:border-indigo-900/60">
-              <div className="font-display text-sm font-bold text-slate-900 dark:text-white mb-1">
+              <div className="font-display text-sm font-bold text-[#111111] dark:text-white mb-1">
                 {insight.headline}
               </div>
-              <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+              <p className="text-[#525252] dark:text-[#D4D4D4] leading-relaxed">
                 {insight.summary}
               </p>
             </div>
@@ -276,11 +276,11 @@ export const InsightModal: React.FC<InsightModalProps> = ({
               {insight.recommendations.map((rec, i) => (
                 <div
                   key={i}
-                  className="p-3.5 rounded-xl border border-[#E6ECF5] dark:border-slate-800 flex items-center justify-between gap-3"
+                  className="p-3.5 rounded-xl border border-[#E5E5E5] dark:border-[#262626] flex items-center justify-between gap-3"
                 >
                   <div>
-                    <div className="font-semibold text-slate-900 dark:text-white">{rec.title}</div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    <div className="font-semibold text-[#111111] dark:text-white">{rec.title}</div>
+                    <div className="text-[11px] text-[#737373] dark:text-[#737373] mt-0.5">
                       {rec.impact}
                     </div>
                   </div>
@@ -290,7 +290,7 @@ export const InsightModal: React.FC<InsightModalProps> = ({
                       onClose();
                       onNavigate(rec.targetSection);
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold whitespace-nowrap cursor-pointer shrink-0"
+                    className="px-3 py-1.5 rounded-lg bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] text-[11px] font-semibold whitespace-nowrap cursor-pointer shrink-0"
                   >
                     {rec.actionLabel}
                   </button>

@@ -35,10 +35,12 @@ import {
   TaskItem,
   UserProfile,
   Workflow,
+  Workspace,
 } from '../types';
 
 interface DashboardViewProps {
   profile: UserProfile | null;
+  workspace?: Workspace | null;
   workflows: Workflow[];
   tasks: TaskItem[];
   approvals: ApprovalItem[];
@@ -61,8 +63,8 @@ const STATUS_META: Record<
 > = {
   draft: {
     label: 'Draft',
-    textClass: 'text-slate-600 dark:text-slate-300',
-    bgClass: 'bg-slate-100 dark:bg-slate-800',
+    textClass: 'text-[#525252] dark:text-[#D4D4D4]',
+    bgClass: 'bg-[#F2F2F2] dark:bg-[#202020]',
   },
   awaiting_approval: {
     label: 'Awaiting Approval',
@@ -93,6 +95,16 @@ const STATUS_META: Record<
     label: 'Failed',
     textClass: 'text-red-700 dark:text-red-300',
     bgClass: 'bg-red-50 dark:bg-red-950/50',
+  },
+  paused: {
+    label: 'Paused',
+    textClass: 'text-purple-700 dark:text-purple-300',
+    bgClass: 'bg-purple-50 dark:bg-purple-950/50',
+  },
+  cancelled: {
+    label: 'Cancelled',
+    textClass: 'text-[#737373] dark:text-[#737373]',
+    bgClass: 'bg-[#F2F2F2] dark:bg-[#202020]',
   },
 };
 
@@ -234,291 +246,230 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="space-y-6 pb-8">
-      {/* 1. Hero Prompt & Voice Banner (Exact Screenshot 1 Design) */}
-      <section className="relative overflow-hidden rounded-2xl border border-[#E2E8F5] dark:border-slate-800 bg-gradient-to-r from-[#F4F6FD] via-[#F2ECFD] to-[#E6ECFA] dark:from-[#121A2F] dark:via-[#1B1837] dark:to-[#13223D] p-6 sm:p-8">
-        <div className="relative z-10 max-w-2xl">
-          <p className="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">
-            Welcome back, {firstName}
-          </p>
-          <h2 className="font-display text-2xl sm:text-[32px] font-bold tracking-tight text-slate-900 dark:text-white leading-[1.18] mb-5">
-            Describe the{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-600 dark:from-indigo-400 dark:to-blue-400">
-              Automation
-            </span>
-            <br />
-            You Want to Create
-          </h2>
-
-          {/* Embedded Voice & Text Prompt Bar */}
-          <form
-            onSubmit={handleHeroSubmit}
-            className="flex items-center gap-2 bg-white dark:bg-slate-900/95 border border-[#DDE4F2] dark:border-slate-700 rounded-full p-1.5 pl-4 shadow-xs focus-within:ring-2 focus-within:ring-blue-500/30"
-          >
-            <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
-            <input
-              type="text"
-              value={heroPrompt}
-              onChange={(e) => setHeroPrompt(e.target.value)}
-              placeholder="Example: A customer cannot log into their account. Check incidents and create a ticket..."
-              className="flex-1 min-w-0 bg-transparent text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={isVoiceListening ? onStopHeroVoice : onStartHeroVoice}
-              title={isVoiceListening ? 'Stop voice capture' : 'Speak workflow command'}
-              className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors cursor-pointer shrink-0 ${
-                isVoiceListening
-                  ? 'bg-red-500 text-white'
-                  : 'text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-            >
-              {isVoiceListening ? (
-                <AudioLines className="w-4 h-4 animate-pulse" />
-              ) : (
-                <Mic className="w-4 h-4" />
-              )}
-            </button>
-            <button
-              type="submit"
-              aria-label="Run AI workflow command"
-              className="flex items-center justify-center w-9 h-9 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white transition-colors cursor-pointer shrink-0"
-            >
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
-
-          {/* One-Click Real-World Customer Support Demo Trigger */}
-          <div className="mt-3.5 flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-slate-500 dark:text-slate-400">Live demo scenario:</span>
-            <button
-              type="button"
-              onClick={() => onLaunchCommand(DEMO_PROMPT, 'voice')}
-              className="inline-flex items-center gap-1.5 text-blue-700 dark:text-blue-300 hover:underline font-medium cursor-pointer text-left"
-            >
-              <span>“Customer login failure → RAG check → ticket & approval”</span>
-              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
-            </button>
+      {/* 1. Plane-Style Monochrome Command Header */}
+      <section className="rounded-xl border border-[#E5E5E5] dark:border-[#262626] bg-white dark:bg-[#121212] p-5 sm:p-6">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div className="max-w-xl">
+            <p className="text-[11px] font-mono uppercase tracking-wider text-[#737373] mb-1">
+              Welcome back, {firstName}
+            </p>
+            <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-[#111111] dark:text-white">
+              Describe the workflow you want to automate
+            </h2>
+            <p className="text-xs text-[#737373] mt-1">
+              Use voice or text to create workflows, query your knowledge base, or coordinate team tasks.
+            </p>
           </div>
-        </div>
 
-        {/* Sculptural 3D Star Visual from Screenshot 1 */}
-        <img
-          src="/src/assets/images/hero_prism_star_1795690515955.jpg"
-          alt="Flowstate Automation Star"
-          referrerPolicy="no-referrer"
-          className="hidden md:block absolute right-6 top-1/2 -translate-y-1/2 w-52 h-52 lg:w-60 lg:h-60 object-cover rounded-2xl mix-blend-multiply dark:mix-blend-screen opacity-90 pointer-events-none select-none"
-        />
+          <form onSubmit={handleHeroSubmit} className="w-full lg:max-w-lg">
+            <div className="flex items-center gap-2 rounded-lg border border-[#E5E5E5] dark:border-[#262626] bg-[#FAFAFA] dark:bg-[#161616] px-3 py-1.5 focus-within:border-[#111111] dark:focus-within:border-white transition-colors">
+              <Sparkles className="w-4 h-4 text-[#737373] shrink-0" />
+              <input
+                type="text"
+                value={heroPrompt}
+                onChange={(e) => setHeroPrompt(e.target.value)}
+                placeholder="Ask AI or describe a workflow..."
+                className="flex-1 min-w-0 bg-transparent text-xs sm:text-sm text-[#111111] dark:text-white placeholder:text-[#737373] focus:outline-none py-1.5"
+              />
+              <button
+                type="button"
+                onClick={isVoiceListening ? onStopHeroVoice : onStartHeroVoice}
+                title={isVoiceListening ? 'Stop voice capture' : 'Speak workflow command'}
+                className={`flex items-center justify-center w-8 h-8 rounded-md transition-colors cursor-pointer shrink-0 ${
+                  isVoiceListening
+                    ? 'bg-red-500 text-white'
+                    : 'text-[#525252] dark:text-[#D4D4D4] hover:bg-[#EFEFEF] dark:hover:bg-[#262626]'
+                }`}
+              >
+                {isVoiceListening ? (
+                  <AudioLines className="w-4 h-4 animate-pulse" />
+                ) : (
+                  <Mic className="w-4 h-4" />
+                )}
+              </button>
+              <button
+                type="submit"
+                aria-label="Run AI workflow command"
+                className="px-3 h-8 rounded-md bg-[#111111] dark:bg-white text-white dark:text-[#111111] text-xs font-semibold hover:opacity-90 flex items-center justify-center gap-1 transition-opacity cursor-pointer shrink-0"
+              >
+                <span>Run</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </form>
+        </div>
       </section>
 
-      {/* 2. Get Started Quick Actions (Screenshot 1) */}
+      {/* 2. Get Started Quick Actions */}
       <section>
-        <h3 className="font-display text-sm font-semibold text-slate-900 dark:text-white mb-3">
+        <h3 className="font-display text-sm font-semibold text-[#111111] dark:text-white mb-3">
           Get Started
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
           <button
             type="button"
             onClick={onOpenNewWorkflow}
-            className="flex items-center justify-between gap-3 p-4 rounded-xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 transition-colors text-left cursor-pointer"
+            className="flex items-center justify-between gap-3 p-4 rounded-xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] hover:border-[#A3A3A3] dark:hover:border-[#525252] transition-colors text-left cursor-pointer"
           >
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                <GitBranch className="w-4.5 h-4.5" />
+              <div className="w-9 h-9 rounded-lg bg-[#F5F5F5] dark:bg-[#1F1F1F] text-[#111111] dark:text-white flex items-center justify-center shrink-0">
+                <GitBranch className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                <div className="text-sm font-semibold text-[#111111] dark:text-white truncate">
                   Workflow
                 </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                <div className="text-xs text-[#737373] truncate">
                   Create from voice or blueprint
                 </div>
               </div>
             </div>
-            <Plus className="w-4 h-4 text-slate-400 shrink-0" />
+            <Plus className="w-4 h-4 text-[#737373] shrink-0" />
           </button>
 
           <button
             type="button"
             onClick={() => onNavigate('knowledge_base')}
-            className="flex items-center justify-between gap-3 p-4 rounded-xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 transition-colors text-left cursor-pointer"
+            className="flex items-center justify-between gap-3 p-4 rounded-xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] hover:border-[#A3A3A3] dark:hover:border-[#525252] transition-colors text-left cursor-pointer"
           >
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                <BookOpen className="w-4.5 h-4.5" />
+              <div className="w-9 h-9 rounded-lg bg-[#F5F5F5] dark:bg-[#1F1F1F] text-[#111111] dark:text-white flex items-center justify-center shrink-0">
+                <BookOpen className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                <div className="text-sm font-semibold text-[#111111] dark:text-white truncate">
                   Knowledge Base
                 </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                <div className="text-xs text-[#737373] dark:text-[#737373] truncate">
                   Upload PDF, DOCX & TXT docs
                 </div>
               </div>
             </div>
-            <Plus className="w-4 h-4 text-slate-400 shrink-0" />
+            <Plus className="w-4 h-4 text-[#737373] shrink-0" />
           </button>
 
           <button
             type="button"
             onClick={() => onNavigate('approvals')}
-            className="flex items-center justify-between gap-3 p-4 rounded-xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 transition-colors text-left cursor-pointer"
+            className="flex items-center justify-between gap-3 p-4 rounded-xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] hover:border-[#A3A3A3] dark:hover:border-[#525252] transition-colors text-left cursor-pointer"
           >
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-4.5 h-4.5" />
+              <div className="w-9 h-9 rounded-lg bg-[#F5F5F5] dark:bg-[#1F1F1F] text-[#111111] dark:text-white flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                <div className="text-sm font-semibold text-[#111111] dark:text-white truncate">
                   Approvals Queue
                 </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                <div className="text-xs text-[#737373] truncate">
                   {metrics.pendingApprovals} pending authorization
                 </div>
               </div>
             </div>
-            <ArrowUpRight className="w-4 h-4 text-slate-400 shrink-0" />
+            <ArrowUpRight className="w-4 h-4 text-[#737373] shrink-0" />
           </button>
         </div>
       </section>
 
-      {/* 3. 5-Column KPI Sparkline Cards (Exact Screenshot 2 Design — 100% Real Firestore Data) */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+      {/* 3. Compact 5-Column Monochrome KPI Cards */}
+      <section className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
         {[
           {
             label: 'Total Workflows',
             value: metrics.totalWorkflows,
             sub: `${metrics.successRate}% completion rate`,
             icon: GitBranch,
-            iconBg: 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400',
-            stroke: '#3B82F6',
-            dataKey: 'total',
           },
           {
             label: 'Active Workflows',
             value: metrics.activeWorkflows,
             sub: 'In progress or review',
             icon: Activity,
-            iconBg: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400',
-            stroke: '#6366F1',
-            dataKey: 'ok',
           },
           {
             label: 'Pending Approvals',
             value: metrics.pendingApprovals,
             sub: 'Human-in-the-loop gate',
             icon: Clock,
-            iconBg: 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400',
-            stroke: '#F59E0B',
-            dataKey: 'pend',
           },
           {
             label: 'Completed Tasks',
             value: metrics.completedTasks,
             sub: `of ${tasks.length} total tasks`,
             icon: CheckCircle2,
-            iconBg: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400',
-            stroke: '#10B981',
-            dataKey: 'ok',
           },
           {
             label: 'Failed Workflows',
             value: metrics.failedWorkflows,
             sub: metrics.failedWorkflows === 0 ? 'All runs nominal' : 'Requires review',
             icon: XCircle,
-            iconBg: 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400',
-            stroke: '#EF4444',
-            dataKey: 'fail',
           },
         ].map((card) => {
           const Icon = card.icon;
           return (
             <div
               key={card.label}
-              className="rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-4 flex flex-col justify-between"
+              className="rounded-lg bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-3.5 flex flex-col justify-between"
             >
-              <div>
-                <div className="flex items-center gap-2.5 mb-3">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${card.iconBg}`}>
-                    <Icon className="w-4 h-4" />
-                  </div>
-                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate">
-                    {card.label}
-                  </span>
-                </div>
-                <div className="font-display text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-                  {card.value}
-                </div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                  {card.sub}
-                </div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-[11px] font-medium text-[#737373] truncate">
+                  {card.label}
+                </span>
+                <Icon className="w-3.5 h-3.5 text-[#737373] shrink-0" />
               </div>
-              <div className="h-10 mt-3 -mx-1">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={sparklineData}>
-                    <defs>
-                      <linearGradient id={`grad-${card.label.replace(/\s/g, '')}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={card.stroke} stopOpacity={0.28} />
-                        <stop offset="100%" stopColor={card.stroke} stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <Area
-                      type="monotone"
-                      dataKey={card.dataKey}
-                      stroke={card.stroke}
-                      strokeWidth={2}
-                      fill={`url(#grad-${card.label.replace(/\s/g, '')})`}
-                      isAnimationActive={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+              <div className="font-display text-xl font-bold text-[#111111] dark:text-white tabular-nums">
+                {card.value}
+              </div>
+              <div className="text-[11px] text-[#737373] mt-0.5 truncate">
+                {card.sub}
               </div>
             </div>
           );
         })}
       </section>
 
-      {/* 4. Main Charts & Recent Activity (Exact Screenshot 2 Middle Row) */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        <div className="lg:col-span-8 rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5">
+      {/* 4. Execution Overview & Recent Activity */}
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-8 rounded-lg bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-4">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
-              <h3 className="font-display text-base font-semibold text-slate-900 dark:text-white">
+              <h3 className="font-display text-sm font-semibold text-[#111111] dark:text-white">
                 Workflow Execution Overview
               </h3>
-              <div className="flex items-center gap-4 mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+              <div className="flex items-center gap-4 mt-1 text-[11px] text-[#737373]">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="w-2.5 h-1 rounded-full bg-blue-500" />
+                  <span className="w-2 h-1 rounded-full bg-[#111111] dark:bg-white" />
                   Successful
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="w-2.5 h-1 rounded-full bg-amber-500" />
+                  <span className="w-2 h-1 rounded-full bg-[#737373]" />
                   Human Review
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="w-2.5 h-1 rounded-full bg-red-500" />
+                  <span className="w-2 h-1 rounded-full bg-red-500" />
                   Failed
                 </span>
               </div>
             </div>
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 px-3 py-1.5 rounded-lg border border-[#E6ECF5] dark:border-slate-800">
+            <span className="text-[11px] font-medium text-[#737373] px-2.5 py-1 rounded-md border border-[#E5E5E5] dark:border-[#262626]">
               Last 7 Days
             </span>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartSeries} margin={{ top: 8, right: 8, left: -24, bottom: 0 }}>
                 <defs>
                   <linearGradient id="execSuccessGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.22} />
-                    <stop offset="100%" stopColor="#3B82F6" stopOpacity={0.01} />
+                    <stop offset="0%" stopColor="#737373" stopOpacity={0.22} />
+                    <stop offset="100%" stopColor="#737373" stopOpacity={0.01} />
                   </linearGradient>
                   <linearGradient id="execFailGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#EF4444" stopOpacity={0.14} />
                     <stop offset="100%" stopColor="#EF4444" stopOpacity={0.01} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" strokeOpacity={0.5} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#525252" strokeOpacity={0.2} />
                 <XAxis
                   dataKey="label"
                   tick={{ fontSize: 11, fill: '#94A3B8' }}
@@ -568,9 +519,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Recent Activity (Exact Screenshot 2 Right Card) */}
-        <div className="lg:col-span-4 rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5 flex flex-col">
+        <div className="lg:col-span-4 rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-5 flex flex-col">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display text-base font-semibold text-slate-900 dark:text-white">
+            <h3 className="font-display text-base font-semibold text-[#111111] dark:text-white">
               Recent Activity
             </h3>
             <button
@@ -586,7 +537,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {auditLogs.slice(0, 6).map((log) => (
               <div
                 key={log.id}
-                className="flex items-start gap-3 pb-3 border-b border-slate-100 dark:border-slate-800/80 last:border-0 last:pb-0"
+                className="flex items-start gap-3 pb-3 border-b border-[#E5E5E5] dark:border-[#262626]/80 last:border-0 last:pb-0"
               >
                 <div
                   className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
@@ -606,13 +557,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                  <div className="text-xs font-semibold text-[#111111] dark:text-white truncate">
                     {log.workflowTitle}
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">
+                  <div className="text-[11px] text-[#737373] dark:text-[#737373] line-clamp-2 mt-0.5">
                     {log.summary}
                   </div>
-                  <div className="text-[10px] font-mono text-slate-400 mt-1 tabular-nums">
+                  <div className="text-[10px] font-mono text-[#737373] mt-1 tabular-nums">
                     {new Date(log.createdAtMs).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -623,7 +574,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             ))}
             {auditLogs.length === 0 && (
-              <div className="text-xs text-slate-500 dark:text-slate-400 py-8 text-center">
+              <div className="text-xs text-[#737373] dark:text-[#737373] py-8 text-center">
                 No execution activity logged yet.
               </div>
             )}
@@ -634,9 +585,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* 5. Bottom 3-Column Executive Cards (Screenshot 2) */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Top Workflows */}
-        <div className="rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5">
+        <div className="rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display text-sm font-semibold text-slate-900 dark:text-white">
+            <h3 className="font-display text-sm font-semibold text-[#111111] dark:text-white">
               Recent Workflows
             </h3>
             <button
@@ -653,17 +604,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 key={wf.id}
                 type="button"
                 onClick={() => onSelectWorkflow(wf)}
-                className="w-full flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left cursor-pointer"
+                className="w-full flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-[#FAFAFA] dark:hover:bg-[#1F1F1F]/60 transition-colors text-left cursor-pointer"
               >
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                  <div className="text-xs font-semibold text-[#111111] dark:text-white truncate">
                     {wf.title}
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <div className="text-[11px] text-[#737373] dark:text-[#737373]">
                     {wf.category} · {wf.steps.length} steps
                   </div>
                 </div>
-                <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 tabular-nums shrink-0">
+                <span className="font-mono text-[11px] text-[#737373] dark:text-[#737373] tabular-nums shrink-0">
                   {wf.durationMs}ms
                 </span>
               </button>
@@ -672,9 +623,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Human Review Queue */}
-        <div className="rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5">
+        <div className="rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display text-sm font-semibold text-slate-900 dark:text-white">
+            <h3 className="font-display text-sm font-semibold text-[#111111] dark:text-white">
               Human Review Queue
             </h3>
             <button
@@ -687,7 +638,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           {pendingApprovalList.length === 0 ? (
-            <div className="py-10 text-center text-xs text-slate-500 dark:text-slate-400">
+            <div className="py-10 text-center text-xs text-[#737373] dark:text-[#737373]">
               No pending actions awaiting human authorization.
             </div>
           ) : (
@@ -697,16 +648,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   key={apr.id}
                   type="button"
                   onClick={() => onNavigate('approvals')}
-                  className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left cursor-pointer"
+                  className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#FAFAFA] dark:hover:bg-[#1F1F1F]/60 transition-colors text-left cursor-pointer"
                 >
                   <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-mono text-xs font-semibold flex items-center justify-center shrink-0 tabular-nums">
                     #{idx + 1}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                    <div className="text-xs font-semibold text-[#111111] dark:text-white truncate">
                       {apr.workflowTitle}
                     </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    <div className="text-[11px] text-[#737373] dark:text-[#737373] truncate">
                       {apr.actionType} · {apr.riskLevel} risk
                     </div>
                   </div>
@@ -717,8 +668,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Workflow Status Donut (Exact Screenshot 2 Bottom-Right Card) */}
-        <div className="rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5 flex flex-col justify-between">
-          <h3 className="font-display text-sm font-semibold text-slate-900 dark:text-white mb-2">
+        <div className="rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-5 flex flex-col justify-between">
+          <h3 className="font-display text-sm font-semibold text-[#111111] dark:text-white mb-2">
             Workflow Status Distribution
           </h3>
           <div className="flex items-center gap-4">
@@ -740,24 +691,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="font-display text-xl font-bold text-slate-900 dark:text-white tabular-nums">
+                <span className="font-display text-xl font-bold text-[#111111] dark:text-white tabular-nums">
                   {metrics.totalWorkflows}
                 </span>
-                <span className="text-[10px] text-slate-400">Total</span>
+                <span className="text-[10px] text-[#737373]">Total</span>
               </div>
             </div>
 
             <div className="flex-1 space-y-2 text-xs">
               {donutData.map((item) => (
                 <div key={item.name} className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-300 truncate">
+                  <span className="inline-flex items-center gap-2 text-[#525252] dark:text-[#D4D4D4] truncate">
                     <span
                       className="w-2 h-2 rounded-full shrink-0"
                       style={{ backgroundColor: item.color }}
                     />
                     <span className="truncate">{item.name}</span>
                   </span>
-                  <span className="font-mono font-semibold text-slate-900 dark:text-white tabular-nums">
+                  <span className="font-mono font-semibold text-[#111111] dark:text-white tabular-nums">
                     {item.value}
                   </span>
                 </div>
@@ -768,7 +719,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <button
             type="button"
             onClick={() => onNavigate('workflows')}
-            className="mt-4 w-full py-2 rounded-xl bg-[#F4F7FC] dark:bg-slate-800/80 hover:bg-blue-50 dark:hover:bg-slate-800 text-xs font-medium text-blue-700 dark:text-blue-300 transition-colors cursor-pointer"
+            className="mt-4 w-full py-2 rounded-xl bg-[#FAFAFA] dark:bg-[#202020]/80 hover:bg-blue-50 dark:hover:bg-[#1F1F1F] text-xs font-medium text-blue-700 dark:text-blue-300 transition-colors cursor-pointer"
           >
             Manage Workflows →
           </button>
@@ -776,13 +727,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </section>
 
       {/* 6. Executions Activity Table (Exact Screenshot 1 Bottom Section) */}
-      <section className="rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5">
+      <section className="rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-5">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
-            <h3 className="font-display text-base font-semibold text-slate-900 dark:text-white">
+            <h3 className="font-display text-base font-semibold text-[#111111] dark:text-white">
               Executions Activity
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="text-xs text-[#737373] dark:text-[#737373]">
               Recent automation runs across workflows and connected systems
             </p>
           </div>
@@ -790,7 +741,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-xs px-3 py-1.5 rounded-lg border border-[#E6ECF5] dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200"
+              className="text-xs px-3 py-1.5 rounded-lg border border-[#E5E5E5] dark:border-[#262626] bg-white dark:bg-[#161616] text-[#404040] dark:text-[#E5E5E5]"
             >
               <option value="all">All Statuses</option>
               <option value="awaiting_approval">Awaiting Approval</option>
@@ -802,7 +753,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <button
               type="button"
               onClick={handleExportCsv}
-              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-[#E6ECF5] dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-[#E5E5E5] dark:border-[#262626] text-[#404040] dark:text-[#E5E5E5] hover:bg-[#FAFAFA] dark:hover:bg-[#1F1F1F] transition-colors cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export</span>
@@ -813,7 +764,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-100 dark:border-slate-800 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+              <tr className="border-b border-[#E5E5E5] dark:border-[#262626] text-[11px] font-medium text-[#737373] dark:text-[#737373]">
                 <th className="py-2.5 pr-4">Automation</th>
                 <th className="py-2.5 px-4">Result</th>
                 <th className="py-2.5 px-4">Duration</th>
@@ -822,19 +773,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <th className="py-2.5 pl-4 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
+            <tbody className="divide-y divide-[#E5E5E5] dark:divide-slate-800/80 text-xs">
               {filteredWorkflows.map((wf) => {
                 const st = STATUS_META[wf.status];
                 return (
                   <tr
                     key={wf.id}
-                    className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
+                    className="hover:bg-[#FAFAFA]/70 dark:hover:bg-[#1F1F1F]/40 transition-colors"
                   >
                     <td className="py-3 pr-4">
-                      <div className="font-semibold text-slate-900 dark:text-white">
+                      <div className="font-semibold text-[#111111] dark:text-white">
                         {wf.title}
                       </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                      <div className="text-[11px] text-[#737373] dark:text-[#737373] font-mono">
                         {wf.code} · {wf.category}
                       </div>
                     </td>
@@ -845,13 +796,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {st.label}
                       </span>
                     </td>
-                    <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-300 tabular-nums whitespace-nowrap">
+                    <td className="py-3 px-4 font-mono text-[#525252] dark:text-[#D4D4D4] tabular-nums whitespace-nowrap">
                       {wf.durationMs}ms
                     </td>
-                    <td className="py-3 px-4 capitalize text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                    <td className="py-3 px-4 capitalize text-[#525252] dark:text-[#D4D4D4] whitespace-nowrap">
                       {wf.triggerType}
                     </td>
-                    <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
+                    <td className="py-3 px-4 font-mono text-[#737373] dark:text-[#737373] tabular-nums whitespace-nowrap">
                       {new Date(wf.updatedAtMs).toLocaleString([], {
                         month: 'short',
                         day: 'numeric',
@@ -874,7 +825,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               })}
               {filteredWorkflows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={6} className="py-8 text-center text-[#737373] dark:text-[#737373]">
                     No workflows match the selected status filter.
                   </td>
                 </tr>

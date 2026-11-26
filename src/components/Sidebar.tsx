@@ -1,22 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   BarChart3,
   BookOpen,
   CheckSquare,
-  ChevronRight,
+  ChevronDown,
+  Download,
+  Folder,
   GitBranch,
   Home,
   Mic,
   PanelLeftClose,
   PanelLeftOpen,
   Plug,
-  Search,
+  Plus,
   Settings,
   ShieldCheck,
-  Sparkles,
   X,
 } from 'lucide-react';
-import { NavSection, UserProfile } from '../types';
+import { NavSection, UserProfile, Workspace } from '../types';
 
 interface SidebarProps {
   activeSection: NavSection;
@@ -30,15 +31,14 @@ interface SidebarProps {
   userPhotoUrl?: string | null;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
+  onSelectWorkspace: (workspaceId: string) => void;
+  onCreateNewOrg: () => void;
+  onCreateDepartment?: (name: string) => void;
+  onInstallPwa?: () => void;
+  onOpenNewWorkflow?: () => void;
 }
-
-const DEPARTMENTS = [
-  { name: 'Customer Support', color: 'bg-blue-500' },
-  { name: 'IT Operations', color: 'bg-indigo-500' },
-  { name: 'Billing & Finance', color: 'bg-emerald-500' },
-  { name: 'HR Management', color: 'bg-amber-500' },
-  { name: 'Sales Ops', color: 'bg-sky-500' },
-];
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeSection,
@@ -48,18 +48,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse,
   mobileOpen,
   onCloseMobile,
-  profile,
-  userPhotoUrl,
-  searchQuery,
-  onSearchChange,
+  workspaces,
+  activeWorkspaceId,
+  onSelectWorkspace,
+  onCreateNewOrg,
+  onCreateDepartment,
+  onInstallPwa,
+  onOpenNewWorkflow,
 }) => {
-  const navItems: {
+  const activeWs = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
+  const departments = activeWs?.departments || [];
+  const [addingDept, setAddingDept] = useState(false);
+  const [newDeptName, setNewDeptName] = useState('');
+  const [wsSwitcherOpen, setWsSwitcherOpen] = useState(false);
+
+  const handleAddDepartment = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newDeptName.trim();
+    if (!trimmed || !onCreateDepartment) return;
+    onCreateDepartment(trimmed);
+    setNewDeptName('');
+    setAddingDept(false);
+  };
+
+  const mainNav: {
     id: NavSection;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     badge?: number;
   }[] = [
-    { id: 'overview', label: 'Overview', icon: Home },
+    { id: 'overview', label: 'Home', icon: Home },
     { id: 'command_center', label: 'AI Command Center', icon: Mic },
     { id: 'workflows', label: 'Workflows', icon: GitBranch },
     { id: 'tasks', label: 'Tasks', icon: CheckSquare },
@@ -71,230 +89,322 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : undefined,
     },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+  ];
+
+  const bottomNav: {
+    id: NavSection;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }[] = [
     { id: 'integrations', label: 'Integrations', icon: Plug },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
-  const sidebarContent = (
-    <div className="flex flex-col h-full bg-white dark:bg-[#0F172A] border-r border-[#E6ECF5] dark:border-slate-800/90 select-none">
-      {/* Brand Row */}
-      <div className="h-16 px-4 flex items-center justify-between border-b border-[#F0F3F9] dark:border-slate-800/80 shrink-0">
-        <button
-          type="button"
-          onClick={() => {
-            onNavigate('overview');
-            onCloseMobile();
-          }}
-          className="flex items-center gap-2.5 min-w-0 cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-xs shrink-0">
-            <svg viewBox="0 0 24 24" className="w-4.5 h-4.5 text-white" fill="none">
-              <path
-                d="M12 3L19.5 7.5V16.5L12 21L4.5 16.5V7.5L12 3Z"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M12 8V16M8.5 10L12 12L15.5 10"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
-          {!collapsed && (
-            <span className="font-display font-bold text-[17px] tracking-tight text-slate-900 dark:text-white whitespace-nowrap">
-              FLOWSTATE
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="hidden lg:flex items-center justify-center w-7 h-7 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-        >
-          {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-        </button>
-
-        <button
-          type="button"
-          onClick={onCloseMobile}
-          aria-label="Close navigation menu"
-          className="lg:hidden flex items-center justify-center w-8 h-8 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Sidebar Search */}
-      {!collapsed && (
-        <div className="px-3.5 pt-3.5 pb-2">
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search..."
-              className="w-full pl-8 pr-10 py-1.5 text-xs rounded-lg bg-[#F5F7FB] dark:bg-slate-900 border border-[#E6ECF5] dark:border-slate-800 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+  const sidebarContent = (isMobile = false) => (
+    <div
+      className={`flex flex-col h-full bg-[#FAFAFA] dark:bg-[#111111] border-r border-[#E5E5E5] dark:border-[#1F1F1F] select-none transition-all duration-200 ${
+        collapsed && !isMobile ? 'w-14' : 'w-60'
+      }`}
+    >
+      {/* ── Header: Workspace Switcher ── */}
+      <div className="h-12 px-3 flex items-center justify-between border-b border-[#E5E5E5] dark:border-[#1F1F1F] shrink-0">
+        {collapsed && !isMobile ? (
+          /* Collapsed: just the logo + expand button */
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            title="Expand sidebar"
+            className="w-full flex items-center justify-center cursor-pointer"
+          >
+            <img
+              src="/icons/favicon_io/android-chrome-192x192.png"
+              alt="FLOWSTATE"
+              className="w-6 h-6 rounded-md object-cover"
             />
-            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400">
-              ⌘K
-            </span>
-          </div>
-        </div>
-      )}
+          </button>
+        ) : (
+          <>
+            {/* Workspace Name + chevron */}
+            <div className="relative flex-1 min-w-0">
+              <button
+                type="button"
+                onClick={() => setWsSwitcherOpen((v) => !v)}
+                className="w-full flex items-center gap-2 group cursor-pointer"
+              >
+                <img
+                  src="/icons/favicon_io/android-chrome-192x192.png"
+                  alt="FLOWSTATE"
+                  className="w-6 h-6 rounded-md object-cover shrink-0"
+                />
+                <span className="font-display font-semibold text-[13px] text-[#111111] dark:text-white truncate flex-1 text-left">
+                  {activeWs?.name || 'Workspace'}
+                </span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-[#737373] shrink-0 transition-transform ${wsSwitcherOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
 
-      {/* Navigation */}
-      <div className="flex-1 overflow-y-auto px-2.5 py-2 space-y-5">
-        <div>
-          {!collapsed && (
-            <div className="px-2.5 mb-1.5 text-[11px] font-medium text-slate-400 dark:text-slate-500 tracking-wide">
-              Workspace
+              {/* Workspace dropdown */}
+              {wsSwitcherOpen && (
+                <div className="absolute left-0 top-full mt-1.5 w-52 bg-white dark:bg-[#1A1A1A] border border-[#E5E5E5] dark:border-[#262626] rounded-xl shadow-lg z-50 py-1 overflow-hidden">
+                  {workspaces.map((ws) => (
+                    <button
+                      key={ws.id}
+                      type="button"
+                      onClick={() => {
+                        onSelectWorkspace(ws.id);
+                        setWsSwitcherOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left transition-colors cursor-pointer ${
+                        ws.id === activeWorkspaceId
+                          ? 'bg-[#F2F2F2] dark:bg-[#262626] text-[#111111] dark:text-white font-semibold'
+                          : 'text-[#525252] dark:text-[#A3A3A3] hover:bg-[#F5F5F5] dark:hover:bg-[#222222]'
+                      }`}
+                    >
+                      <span className="w-5 h-5 rounded bg-[#111111] dark:bg-white text-white dark:text-[#111111] text-[10px] font-bold flex items-center justify-center shrink-0 uppercase">
+                        {ws.name.charAt(0)}
+                      </span>
+                      <span className="truncate">{ws.name}</span>
+                    </button>
+                  ))}
+                  <div className="border-t border-[#E5E5E5] dark:border-[#262626] mt-1 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onCreateNewOrg();
+                        setWsSwitcherOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[#737373] hover:text-[#111111] dark:hover:text-white hover:bg-[#F5F5F5] dark:hover:bg-[#222222] cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>New organization</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-          <nav className="space-y-0.5">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeSection === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    onNavigate(item.id);
-                    onCloseMobile();
-                  }}
-                  title={collapsed ? item.label : undefined}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-medium transition-colors cursor-pointer relative ${
-                    isActive
-                      ? 'bg-[#EEF4FF] dark:bg-blue-950/50 text-blue-700 dark:text-blue-300'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
-                  }`}
-                >
-                  <Icon
-                    className={`w-4 h-4 shrink-0 ${
-                      isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'
-                    }`}
-                  />
-                  {!collapsed && (
-                    <span className="truncate whitespace-nowrap flex-1 text-left">{item.label}</span>
-                  )}
-                  {!collapsed && item.badge !== undefined && (
-                    <span className="font-mono tabular-nums text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-950/60 px-1.5 py-0.5 rounded-md">
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
 
-        {/* Departments / Projects section matching Screenshots 1 & 3 */}
-        {!collapsed && (
-          <div>
-            <div className="px-2.5 mb-1.5 flex items-center justify-between text-[11px] font-medium text-slate-400 dark:text-slate-500 tracking-wide">
-              <span>Departments</span>
-            </div>
-            <div className="space-y-0.5">
-              {DEPARTMENTS.map((dept) => (
-                <button
-                  key={dept.name}
-                  type="button"
-                  onClick={() => {
-                    onNavigate('workflows', dept.name);
-                    onCloseMobile();
-                  }}
-                  className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[12.5px] text-slate-600 dark:text-slate-400 hover:bg-slate-100/70 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
-                >
-                  <span className={`w-2 h-2 rounded-xs ${dept.color} shrink-0`} />
-                  <span className="truncate flex-1 text-left">{dept.name}</span>
-                  <ChevronRight className="w-3 h-3 text-slate-300 dark:text-slate-600" />
-                </button>
-              ))}
-            </div>
-          </div>
+            {/* Collapse / Close button */}
+            {!isMobile ? (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                title="Collapse sidebar"
+                className="ml-1 w-6 h-6 flex items-center justify-center rounded text-[#737373] hover:text-[#111111] dark:hover:text-white hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] transition-colors cursor-pointer shrink-0"
+              >
+                <PanelLeftClose className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onCloseMobile}
+                className="ml-1 w-7 h-7 flex items-center justify-center rounded text-[#737373] hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </>
         )}
       </div>
 
-      {/* Bottom AI Copilot Launcher Card (Screenshot 2) + Profile Footer (Screenshots 1 & 2) */}
-      <div className="p-3 border-t border-[#F0F3F9] dark:border-slate-800/80 space-y-2.5 shrink-0">
-        {!collapsed && (
-          <div className="rounded-xl p-3 bg-gradient-to-br from-[#EEF4FF] to-[#F5F3FF] dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-100 dark:border-blue-900/50">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-white mb-1">
-              <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>Voice AI Copilot</span>
-            </div>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed mb-2.5">
-              Speak or describe any business workflow to orchestrate tasks instantly.
-            </p>
+      {/* ── Scrollable body ── */}
+      <div className="flex-1 overflow-y-auto py-2 space-y-4">
+
+        {/* + New workflow button */}
+        {onOpenNewWorkflow && (
+          <div className={`${collapsed && !isMobile ? 'px-1.5' : 'px-3'} pt-1`}>
             <button
               type="button"
-              onClick={() => {
-                onNavigate('command_center');
-                onCloseMobile();
-              }}
-              className="w-full py-1.5 px-3 rounded-lg bg-white dark:bg-slate-900 border border-blue-200/80 dark:border-slate-700 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors cursor-pointer whitespace-nowrap"
+              onClick={() => { onOpenNewWorkflow(); if (isMobile) onCloseMobile(); }}
+              title="New workflow"
+              className={`w-full flex items-center gap-2 rounded-md border border-[#E5E5E5] dark:border-[#262626] bg-white dark:bg-[#161616] hover:bg-[#F5F5F5] dark:hover:bg-[#1F1F1F] text-[#111111] dark:text-white text-xs font-medium transition-colors cursor-pointer ${
+                collapsed && !isMobile ? 'justify-center py-2' : 'px-3 py-2'
+              }`}
             >
-              Open Command Center →
+              <Plus className="w-3.5 h-3.5 shrink-0 text-[#525252] dark:text-[#A3A3A3]" />
+              {(!collapsed || isMobile) && <span>New workflow</span>}
             </button>
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={() => {
-            onNavigate('settings');
-            onCloseMobile();
-          }}
-          className="w-full flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer text-left"
-        >
-          <img
-            src={userPhotoUrl || '/src/assets/images/avatar_enterprise_lead_1795690516596.jpg'}
-            alt={profile?.displayName || 'Workspace User'}
-            referrerPolicy="no-referrer"
-            className="w-8 h-8 rounded-full object-cover border border-slate-200 dark:border-slate-700 shrink-0"
-          />
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
-                {profile?.displayName || 'Operations Lead'}
-              </div>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                {profile?.role || 'Operator'} · {profile?.organizationName || 'Flowstate HQ'}
-              </div>
+        {/* Main navigation */}
+        <nav data-tour="nav" className={`${collapsed && !isMobile ? 'px-1.5' : 'px-2'} space-y-0.5`}>
+          {mainNav.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeSection === item.id;
+            return (
+              <button
+                key={item.id}
+                data-tour={`nav-${item.id}`}
+                type="button"
+                onClick={() => { onNavigate(item.id); if (isMobile) onCloseMobile(); }}
+                title={collapsed && !isMobile ? item.label : undefined}
+                className={`w-full flex items-center rounded-md text-[13px] transition-colors cursor-pointer ${
+                  collapsed && !isMobile ? 'justify-center gap-0 py-2.5' : 'gap-2.5 px-2.5 py-1.5'
+                } ${
+                  isActive
+                    ? 'bg-[#ECECEC] dark:bg-[#1F1F1F] text-[#111111] dark:text-white font-semibold'
+                    : 'text-[#525252] dark:text-[#A3A3A3] hover:bg-[#F2F2F2] dark:hover:bg-[#1A1A1A] hover:text-[#111111] dark:hover:text-white font-medium'
+                }`}
+              >
+                <Icon
+                  className={`w-4 h-4 shrink-0 ${
+                    isActive ? 'text-[#111111] dark:text-white' : 'text-[#737373]'
+                  }`}
+                />
+                {(!collapsed || isMobile) && (
+                  <>
+                    <span className="truncate flex-1 text-left">{item.label}</span>
+                    {item.badge !== undefined && (
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-full bg-[#111111] text-white dark:bg-white dark:text-[#111111] tabular-nums font-semibold leading-none">
+                        {item.badge}
+                      </span>
+                    )}
+                  </>
+                )}
+                {collapsed && !isMobile && item.badge !== undefined && (
+                  <span className="absolute top-1 right-1.5 w-1.5 h-1.5 rounded-full bg-[#111111] dark:bg-white" />
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Departments */}
+        {(!collapsed || isMobile) && (
+          <div className="px-2">
+            <div className="px-2 mb-1 flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-[#A3A3A3] dark:text-[#737373] uppercase tracking-wider">
+                Departments
+              </span>
+              {onCreateDepartment && (
+                <button
+                  type="button"
+                  onClick={() => setAddingDept((v) => !v)}
+                  title="Add department"
+                  className="w-5 h-5 rounded flex items-center justify-center text-[#737373] hover:text-[#111111] dark:hover:text-white hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
-          )}
-        </button>
+
+            {addingDept && onCreateDepartment && (
+              <form onSubmit={handleAddDepartment} className="px-1 mb-2 flex items-center gap-1">
+                <input
+                  type="text"
+                  autoFocus
+                  value={newDeptName}
+                  onChange={(e) => setNewDeptName(e.target.value)}
+                  placeholder="Department name..."
+                  className="flex-1 min-w-0 px-2 py-1 text-xs rounded-md border border-[#E5E5E5] dark:border-[#262626] bg-white dark:bg-[#161616] text-[#111111] dark:text-white focus:outline-none focus:border-[#111111] dark:focus:border-white"
+                />
+                <button
+                  type="submit"
+                  disabled={!newDeptName.trim()}
+                  className="px-2 py-1 rounded-md bg-[#111111] dark:bg-white text-white dark:text-[#111111] text-[11px] font-medium disabled:opacity-40 cursor-pointer"
+                >
+                  Add
+                </button>
+              </form>
+            )}
+
+            {departments.length === 0 ? (
+              !addingDept && onCreateDepartment && (
+                <button
+                  type="button"
+                  onClick={() => setAddingDept(true)}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs text-[#A3A3A3] hover:text-[#111111] dark:hover:text-white hover:bg-[#F2F2F2] dark:hover:bg-[#1A1A1A] transition-colors cursor-pointer text-left"
+                >
+                  <Plus className="w-3.5 h-3.5 shrink-0" />
+                  <span>Create department</span>
+                </button>
+              )
+            ) : (
+              <div className="space-y-0.5">
+                {departments.map((deptName) => (
+                  <button
+                    key={deptName}
+                    type="button"
+                    onClick={() => { onNavigate('workflows', deptName); if (isMobile) onCloseMobile(); }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] text-[#525252] dark:text-[#A3A3A3] hover:bg-[#F2F2F2] dark:hover:bg-[#1A1A1A] hover:text-[#111111] dark:hover:text-white transition-colors cursor-pointer text-left"
+                  >
+                    <Folder className="w-4 h-4 shrink-0 text-[#737373]" />
+                    <span className="truncate">{deptName}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* ── Bottom nav (Integrations + Settings) ── */}
+      <div className={`border-t border-[#E5E5E5] dark:border-[#1F1F1F] pb-2 pt-1 ${collapsed && !isMobile ? 'px-1.5' : 'px-2'}`}>
+        {bottomNav.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeSection === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => { onNavigate(item.id); if (isMobile) onCloseMobile(); }}
+              title={collapsed && !isMobile ? item.label : undefined}
+              className={`w-full flex items-center rounded-md text-[13px] transition-colors cursor-pointer mt-0.5 ${
+                collapsed && !isMobile ? 'justify-center py-2.5' : 'gap-2.5 px-2.5 py-1.5'
+              } ${
+                isActive
+                  ? 'bg-[#ECECEC] dark:bg-[#1F1F1F] text-[#111111] dark:text-white font-semibold'
+                  : 'text-[#525252] dark:text-[#A3A3A3] hover:bg-[#F2F2F2] dark:hover:bg-[#1A1A1A] hover:text-[#111111] dark:hover:text-white font-medium'
+              }`}
+            >
+              <Icon
+                className={`w-4 h-4 shrink-0 ${
+                  isActive ? 'text-[#111111] dark:text-white' : 'text-[#737373]'
+                }`}
+              />
+              {(!collapsed || isMobile) && <span className="truncate">{item.label}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Footer: role pill + install ── */}
+      {(!collapsed || isMobile) && (
+        <div className="px-3 pb-3 pt-1 border-t border-[#E5E5E5] dark:border-[#1F1F1F] flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#F2F2F2] dark:bg-[#1A1A1A] text-[11px] font-medium text-[#525252] dark:text-[#A3A3A3] truncate">
+            <span className="capitalize">{activeWs?.type === 'organization' ? 'Business' : 'Personal'}</span>
+            <span className="text-[#A3A3A3] dark:text-[#737373]">· {activeWs?.role || 'Owner'}</span>
+          </span>
+          {onInstallPwa && (
+            <button
+              type="button"
+              onClick={onInstallPwa}
+              title="Install FLOWSTATE"
+              className="p-1.5 rounded-md text-[#737373] hover:text-[#111111] dark:hover:text-white hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] cursor-pointer shrink-0"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 
   return (
     <>
-      {/* Desktop persistent sidebar */}
-      <aside
-        className={`hidden lg:block shrink-0 transition-[width] duration-200 ${
-          collapsed ? 'w-[72px]' : 'w-[248px]'
-        }`}
-      >
-        <div className="sticky top-0 h-screen">{sidebarContent}</div>
+      {/* Desktop single sidebar */}
+      <aside className="hidden lg:flex h-full shrink-0 z-20">
+        {sidebarContent(false)}
       </aside>
 
-      {/* Mobile slide-over drawer */}
+      {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden flex">
-          <div
-            className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs"
-            onClick={onCloseMobile}
-          />
-          <div className="relative z-10 w-[264px] max-w-[85vw] h-full shadow-xl">
-            {sidebarContent}
-          </div>
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs" onClick={onCloseMobile} />
+          <aside className="relative h-full shadow-2xl">
+            {sidebarContent(true)}
+          </aside>
         </div>
       )}
     </>
