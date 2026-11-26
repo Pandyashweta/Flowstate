@@ -1,0 +1,461 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Security Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerified() && request.auth.token.email == 'pandyashweta.in@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (isVerified() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function isStringBounded(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
+    function isOptionalStringBounded(data, field, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isBoundedStringList(val, maxItems) {
+      return val is list && val.size() <= maxItems && (val.size() == 0 || (val[0] is string && val[0].size() <= 500));
+    }
+
+    // --- Entity Validation Blueprints ---
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'department', 'organizationName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'role', 'department', 'organizationName',
+          'voiceLanguage', 'autoSpeakResponses', 'requireApprovalForExternal',
+          'notifyApprovals', 'notifyFailures', 'createdAt', 'updatedAt'
+        ])
+        && data.uid == request.auth.uid
+        && isStringBounded(data.uid, 128)
+        && isStringBounded(data.displayName, 120)
+        && data.role in ['Admin', 'Approver', 'Operator', 'Viewer']
+        && isStringBounded(data.department, 80)
+        && isStringBounded(data.organizationName, 120)
+        && isOptionalStringBounded(data, 'voiceLanguage', 20)
+        && (!('autoSpeakResponses' in data) || data.autoSpeakResponses is bool)
+        && (!('requireApprovalForExternal' in data) || data.requireApprovalForExternal is bool)
+        && (!('notifyApprovals' in data) || data.notifyApprovals is bool)
+        && (!('notifyFailures' in data) || data.notifyFailures is bool)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data) {
+      return data.keys().hasAll(['email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['email', 'phone', 'createdAt', 'updatedAt'])
+        && isStringBounded(data.email, 200)
+        && isOptionalStringBounded(data, 'phone', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidWorkflow(data) {
+      return data.keys().hasAll([
+          'ownerId', 'code', 'title', 'description', 'category', 'status',
+          'priority', 'recommendedTeam', 'triggerType', 'durationMs',
+          'steps', 'ragSources', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'code', 'title', 'description', 'category', 'status',
+          'priority', 'recommendedTeam', 'triggerType', 'sourcePrompt',
+          'troubleshootingSummary', 'durationMs', 'steps', 'ragSources',
+          'dueDate', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId == request.auth.uid
+        && isValidId(data.ownerId)
+        && isStringBounded(data.code, 32)
+        && isStringBounded(data.title, 200)
+        && isStringBounded(data.description, 4000)
+        && isStringBounded(data.category, 80)
+        && data.status in ['draft', 'awaiting_approval', 'approved', 'in_progress', 'blocked', 'completed', 'failed']
+        && data.priority in ['low', 'medium', 'high', 'critical']
+        && isStringBounded(data.recommendedTeam, 120)
+        && data.triggerType in ['voice', 'chat', 'manual', 'scheduled', 'webhook']
+        && isOptionalStringBounded(data, 'sourcePrompt', 2000)
+        && isOptionalStringBounded(data, 'troubleshootingSummary', 5000)
+        && isOptionalStringBounded(data, 'dueDate', 40)
+        && data.durationMs is number && data.durationMs >= 0 && data.durationMs <= 86400000
+        && isBoundedStringList(data.steps, 25)
+        && isBoundedStringList(data.ragSources, 10)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll([
+          'ownerId', 'workflowId', 'code', 'title', 'description', 'assignee',
+          'department', 'priority', 'status', 'dueDate', 'dependencies',
+          'comments', 'requiresApproval', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'workflowId', 'code', 'title', 'description', 'assignee',
+          'department', 'priority', 'status', 'dueDate', 'dependencies',
+          'comments', 'integrationAction', 'requiresApproval', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId == request.auth.uid
+        && isValidId(data.ownerId)
+        && isValidId(data.workflowId)
+        && isStringBounded(data.code, 32)
+        && isStringBounded(data.title, 200)
+        && isStringBounded(data.description, 4000)
+        && isStringBounded(data.assignee, 120)
+        && isStringBounded(data.department, 80)
+        && data.priority in ['low', 'medium', 'high', 'critical']
+        && data.status in ['backlog', 'todo', 'in_progress', 'blocked', 'completed']
+        && isStringBounded(data.dueDate, 40)
+        && isBoundedStringList(data.dependencies, 10)
+        && isBoundedStringList(data.comments, 30)
+        && isOptionalStringBounded(data, 'integrationAction', 200)
+        && data.requiresApproval is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidKnowledgeDoc(data) {
+      return data.keys().hasAll([
+          'ownerId', 'title', 'fileName', 'fileType', 'category',
+          'content', 'summary', 'tags', 'wordCount', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'title', 'fileName', 'fileType', 'category',
+          'content', 'summary', 'tags', 'wordCount', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId == request.auth.uid
+        && isValidId(data.ownerId)
+        && isStringBounded(data.title, 200)
+        && isStringBounded(data.fileName, 200)
+        && data.fileType in ['pdf', 'docx', 'txt', 'md']
+        && isStringBounded(data.category, 80)
+        && isStringBounded(data.content, 80000)
+        && isStringBounded(data.summary, 1000)
+        && isBoundedStringList(data.tags, 10)
+        && data.wordCount is number && data.wordCount >= 0 && data.wordCount <= 500000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidApproval(data) {
+      return data.keys().hasAll([
+          'ownerId', 'workflowId', 'workflowTitle', 'actionType', 'integrationTarget',
+          'isSimulated', 'riskLevel', 'reason', 'proposedPayload', 'requestedBy',
+          'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'workflowId', 'workflowTitle', 'actionType', 'integrationTarget',
+          'isSimulated', 'riskLevel', 'reason', 'proposedPayload', 'requestedBy',
+          'status', 'reviewerNote', 'reviewedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId == request.auth.uid
+        && isValidId(data.ownerId)
+        && isValidId(data.workflowId)
+        && isStringBounded(data.workflowTitle, 200)
+        && isStringBounded(data.actionType, 100)
+        && isStringBounded(data.integrationTarget, 100)
+        && data.isSimulated is bool
+        && data.riskLevel in ['low', 'medium', 'high']
+        && isStringBounded(data.reason, 1000)
+        && isStringBounded(data.proposedPayload, 4000)
+        && isStringBounded(data.requestedBy, 120)
+        && data.status in ['pending', 'approved', 'rejected', 'changes_requested']
+        && isOptionalStringBounded(data, 'reviewerNote', 1000)
+        && isOptionalStringBounded(data, 'reviewedBy', 120)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidIntegration(data) {
+      return data.keys().hasAll([
+          'ownerId', 'key', 'name', 'category', 'provider', 'status',
+          'isSimulated', 'description', 'executionsCount', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'key', 'name', 'category', 'provider', 'status',
+          'isSimulated', 'endpointUrl', 'description', 'lastSyncAt',
+          'executionsCount', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId == request.auth.uid
+        && isValidId(data.ownerId)
+        && isStringBounded(data.key, 60)
+        && isStringBounded(data.name, 120)
+        && data.category in ['email', 'crm', 'ticketing', 'project_management', 'calendar', 'rest_api']
+        && isStringBounded(data.provider, 100)
+        && data.status in ['connected_simulated', 'connected_live', 'disconnected', 'error']
+        && data.isSimulated is bool
+        && isOptionalStringBounded(data, 'endpointUrl', 500)
+        && isStringBounded(data.description, 500)
+        && isOptionalStringBounded(data, 'lastSyncAt', 60)
+        && data.executionsCount is number && data.executionsCount >= 0 && data.executionsCount <= 10000000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll([
+          'ownerId', 'workflowId', 'workflowTitle', 'eventType', 'actor',
+          'summary', 'status', 'isSimulated', 'durationMs', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'workflowId', 'workflowTitle', 'eventType', 'actor',
+          'summary', 'status', 'isSimulated', 'durationMs', 'createdAt'
+        ])
+        && data.ownerId == request.auth.uid
+        && isValidId(data.ownerId)
+        && isStringBounded(data.workflowId, 128)
+        && isStringBounded(data.workflowTitle, 200)
+        && isStringBounded(data.eventType, 80)
+        && isStringBounded(data.actor, 120)
+        && isStringBounded(data.summary, 1000)
+        && data.status in ['success', 'pending', 'failed', 'warning']
+        && data.isSimulated is bool
+        && data.durationMs is number && data.durationMs >= 0 && data.durationMs <= 86400000
+        && data.createdAt is timestamp;
+    }
+
+    function isValidTeamMember(data) {
+      return data.keys().hasAll(['ownerId', 'name', 'role', 'department', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'name', 'role', 'department', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId == request.auth.uid
+        && isValidId(data.ownerId)
+        && isStringBounded(data.name, 120)
+        && data.role in ['Admin', 'Approver', 'Operator', 'Viewer']
+        && isStringBounded(data.department, 80)
+        && data.status in ['active', 'invited']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // Admins registry (read-only from client; managed out-of-band or bootstrapped admin)
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && (request.auth.uid == adminUid || isBootstrappedAdmin());
+      allow list, create, update, delete: if false;
+    }
+
+    // Users & isolated private PII
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create: if isVerified() && isValidId(userId) && isOwner(userId)
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (incoming().role == 'Operator' || isBootstrappedAdmin());
+      allow update: if isVerified() && isValidId(userId) && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (isOwner(userId) && incoming().role == existing().role && incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'department', 'organizationName', 'voiceLanguage',
+            'autoSpeakResponses', 'requireApprovalForExternal', 'notifyApprovals',
+            'notifyFailures', 'updatedAt'
+          ]))
+        );
+      allow delete: if false;
+
+      match /private/{docId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(docId) && isOwner(userId);
+        allow list: if false;
+        allow create: if isVerified() && isValidId(userId) && isValidId(docId) && isOwner(userId)
+          && isValidUserPrivateInfo(incoming())
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isVerified() && isValidId(userId) && isValidId(docId) && isOwner(userId)
+          && isValidUserPrivateInfo(incoming())
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'phone', 'updatedAt']);
+        allow delete: if false;
+      }
+    }
+
+    // Workflows
+    match /workflows/{workflowId} {
+      allow get: if isSignedIn() && isValidId(workflowId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isVerified() && isValidId(workflowId) && isValidWorkflow(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified() && isValidId(workflowId) && isValidWorkflow(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            existing().ownerId == request.auth.uid && existing().status != 'completed' && (
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'durationMs', 'updatedAt']) ||
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'title', 'description', 'category', 'priority', 'recommendedTeam',
+                'troubleshootingSummary', 'steps', 'ragSources', 'dueDate', 'status', 'durationMs', 'updatedAt'
+              ])
+            )
+          )
+        );
+      allow delete: if isVerified() && isValidId(workflowId) && (existing().ownerId == request.auth.uid || isAdmin());
+    }
+
+    // Tasks (Relational sync with parent Workflow)
+    match /tasks/{taskId} {
+      allow get: if isSignedIn() && isValidId(taskId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isVerified() && isValidId(taskId) && isValidTask(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/workflows/$(incoming().workflowId))
+        && getAfter(/databases/$(database)/documents/workflows/$(incoming().workflowId)).data.ownerId == request.auth.uid;
+      allow update: if isVerified() && isValidId(taskId) && isValidTask(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().workflowId == existing().workflowId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            existing().ownerId == request.auth.uid && (
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) ||
+              incoming().diff(existing()).affectedKeys().hasOnly(['comments', 'updatedAt']) ||
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'title', 'description', 'assignee', 'department', 'priority',
+                'status', 'dueDate', 'dependencies', 'comments', 'integrationAction',
+                'requiresApproval', 'updatedAt'
+              ])
+            )
+          )
+        );
+      allow delete: if isVerified() && isValidId(taskId) && (existing().ownerId == request.auth.uid || isAdmin());
+    }
+
+    // Knowledge Docs
+    match /knowledgeDocs/{docId} {
+      allow get: if isSignedIn() && isValidId(docId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isVerified() && isValidId(docId) && isValidKnowledgeDoc(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified() && isValidId(docId) && isValidKnowledgeDoc(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (existing().ownerId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'category', 'content', 'summary', 'tags', 'wordCount', 'updatedAt'
+          ]))
+        );
+      allow delete: if isVerified() && isValidId(docId) && (existing().ownerId == request.auth.uid || isAdmin());
+    }
+
+    // Approvals (Relational sync + terminal state lock)
+    match /approvals/{approvalId} {
+      allow get: if isSignedIn() && isValidId(approvalId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isVerified() && isValidId(approvalId) && isValidApproval(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().status == 'pending'
+        && existsAfter(/databases/$(database)/documents/workflows/$(incoming().workflowId))
+        && getAfter(/databases/$(database)/documents/workflows/$(incoming().workflowId)).data.ownerId == request.auth.uid;
+      allow update: if isVerified() && isValidId(approvalId) && isValidApproval(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().workflowId == existing().workflowId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            existing().ownerId == request.auth.uid
+            && !(existing().status in ['approved', 'rejected'])
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewerNote', 'reviewedBy', 'updatedAt'])
+          )
+        );
+      allow delete: if isAdmin();
+    }
+
+    // Integrations
+    match /integrations/{integrationId} {
+      allow get: if isSignedIn() && isValidId(integrationId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isVerified() && isValidId(integrationId) && isValidIntegration(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified() && isValidId(integrationId) && isValidIntegration(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().key == existing().key
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (existing().ownerId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly([
+            'status', 'isSimulated', 'endpointUrl', 'lastSyncAt', 'executionsCount', 'updatedAt'
+          ]))
+        );
+      allow delete: if isVerified() && isValidId(integrationId) && (existing().ownerId == request.auth.uid || isAdmin());
+    }
+
+    // Audit Logs (Immutable append-only)
+    match /auditLogs/{logId} {
+      allow get: if isSignedIn() && isValidId(logId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isVerified() && isValidId(logId) && isValidAuditLog(incoming())
+        && incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // Team Members
+    match /teamMembers/{memberId} {
+      allow get: if isSignedIn() && isValidId(memberId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isVerified() && isValidId(memberId) && isValidTeamMember(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified() && isValidId(memberId) && isValidTeamMember(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (existing().ownerId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'role', 'department', 'status', 'updatedAt'
+          ]))
+        );
+      allow delete: if isVerified() && isValidId(memberId) && (existing().ownerId == request.auth.uid || isAdmin());
+    }
+  }
+}

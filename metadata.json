@@ -1,0 +1,6 @@
+{
+  "name": "FLOWSTATE",
+  "description": "Voice-driven enterprise agentic workflow automation platform with AI orchestration, RAG knowledge base, approvals, and execution analytics.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
