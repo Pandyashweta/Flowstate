@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowRight, BookOpen, CheckCircle2, Mic, ShieldCheck } from 'lucide-react';
+import heroPrismImg from '../assets/images/hero_prism_star_1795690515955.jpg';
 
 interface AuthGateProps {
   onSignIn: () => void;
@@ -76,7 +77,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSignIn, error }) => {
           </div>
 
           <img
-            src="/src/assets/images/hero_prism_star_1795690515955.jpg"
+            src={heroPrismImg}
             alt="Sculptural prism accent"
             referrerPolicy="no-referrer"
             className="hidden sm:block absolute -right-10 -top-10 w-56 h-56 object-cover rounded-full opacity-55 mix-blend-multiply dark:mix-blend-screen pointer-events-none select-none"

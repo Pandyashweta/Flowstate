@@ -161,11 +161,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     const dayMap = new Map(days.map((d) => [d.key, d]));
-    const fallbackDay = days[days.length - 1];
 
     auditLogs.forEach((log) => {
+      if (!Number.isFinite(log.createdAtMs)) return;
       const k = new Date(log.createdAtMs).toISOString().slice(0, 10);
-      const bucket = dayMap.get(k) || fallbackDay;
+      const bucket = dayMap.get(k);
+      if (!bucket) return;
       if (log.status === 'success') bucket.successful += 1;
       else if (log.status === 'pending' || log.status === 'warning') bucket.pending += 1;
       else if (log.status === 'failed') bucket.failed += 1;
@@ -564,10 +565,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {log.summary}
                   </div>
                   <div className="text-[10px] font-mono text-[#737373] mt-1 tabular-nums">
-                    {new Date(log.createdAtMs).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {Number.isFinite(log.createdAtMs)
+                      ? new Date(log.createdAtMs).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : '—'}
+                    {log.actor ? ` · ${log.actor}` : ''}
                     {log.isSimulated ? ' · Simulated' : ''}
                   </div>
                 </div>
@@ -775,7 +779,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </thead>
             <tbody className="divide-y divide-[#E5E5E5] dark:divide-slate-800/80 text-xs">
               {filteredWorkflows.map((wf) => {
-                const st = STATUS_META[wf.status];
+                const st = STATUS_META[wf.status] || {
+                  label: wf.status.replace('_', ' '),
+                  textClass: 'text-[#525252] dark:text-[#D4D4D4]',
+                  bgClass: 'bg-[#F2F2F2] dark:bg-[#202020]',
+                };
                 return (
                   <tr
                     key={wf.id}
@@ -803,12 +811,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       {wf.triggerType}
                     </td>
                     <td className="py-3 px-4 font-mono text-[#737373] dark:text-[#737373] tabular-nums whitespace-nowrap">
-                      {new Date(wf.updatedAtMs).toLocaleString([], {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {Number.isFinite(wf.updatedAtMs)
+                        ? new Date(wf.updatedAtMs).toLocaleString([], {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '—'}
                     </td>
                     <td className="py-3 pl-4 text-right">
                       <button

@@ -547,7 +547,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full mt-2 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] disabled:opacity-60 text-white font-medium text-xs sm:text-sm transition-colors shadow-sm cursor-pointer"
+                  className="w-full mt-2 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] disabled:opacity-60 font-medium text-xs sm:text-sm transition-colors shadow-sm cursor-pointer"
                 >
                   <span>
                     {loading

@@ -17,6 +17,7 @@ interface WorkflowsViewProps {
   workflows: Workflow[];
   tasks: TaskItem[];
   auditLogs: AuditLogItem[];
+  departments?: string[];
   initialDepartmentFilter: string;
   searchQuery: string;
   selectedWorkflow: Workflow | null;
@@ -46,6 +47,7 @@ export const WorkflowsView: React.FC<WorkflowsViewProps> = ({
   workflows,
   tasks,
   auditLogs,
+  departments = [],
   initialDepartmentFilter,
   searchQuery,
   selectedWorkflow,
@@ -58,16 +60,16 @@ export const WorkflowsView: React.FC<WorkflowsViewProps> = ({
   const [departmentFilter, setDepartmentFilter] = useState<string>(initialDepartmentFilter || 'All');
 
   React.useEffect(() => {
-    if (initialDepartmentFilter) {
-      setDepartmentFilter(initialDepartmentFilter);
-    }
+    setDepartmentFilter(initialDepartmentFilter || 'All');
   }, [initialDepartmentFilter]);
 
   const categories = useMemo(() => {
-    const set = new Set<string>(['All', 'Customer Support', 'IT Operations', 'Billing & Finance', 'HR Management', 'Sales Ops']);
-    workflows.forEach((w) => set.add(w.category));
+    const set = new Set<string>(['All', ...departments.filter(Boolean)]);
+    workflows.forEach((w) => {
+      if (w.category) set.add(w.category);
+    });
     return Array.from(set);
-  }, [workflows]);
+  }, [workflows, departments]);
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -170,11 +172,12 @@ export const WorkflowsView: React.FC<WorkflowsViewProps> = ({
       {viewMode === 'kanban' ? (
         <div className="flex gap-4 overflow-x-auto pb-3">
           {KANBAN_COLUMNS.map((col) => {
-            const colItems = filtered.filter((w) =>
-              col.id === 'in_progress'
-                ? w.status === 'in_progress' || w.status === 'approved'
-                : w.status === col.id
-            );
+            const colItems = filtered.filter((w) => {
+              if (col.id === 'in_progress') return w.status === 'in_progress' || w.status === 'approved';
+              if (col.id === 'blocked') return w.status === 'blocked' || w.status === 'paused';
+              if (col.id === 'failed') return w.status === 'failed' || w.status === 'cancelled';
+              return w.status === col.id;
+            });
             return (
               <div
                 key={col.id}
@@ -485,14 +488,16 @@ export const WorkflowsView: React.FC<WorkflowsViewProps> = ({
                       >
                         <div className="flex items-center justify-between text-[11px] text-[#737373] mb-0.5">
                           <span className="font-medium text-[#404040] dark:text-[#D4D4D4]">
-                            {log.actor} · {log.eventType}
+                            {log.actor || 'System'} · {log.eventType}
                           </span>
                           <span className="font-mono tabular-nums inline-flex items-center gap-1">
                             <Clock className="w-3 h-3" />
-                            {new Date(log.createdAtMs).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
+                            {Number.isFinite(log.createdAtMs)
+                              ? new Date(log.createdAtMs).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : '—'}
                           </span>
                         </div>
                         <div className="text-[#525252] dark:text-[#D4D4D4]">{log.summary}</div>

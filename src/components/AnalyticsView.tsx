@@ -74,10 +74,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
       });
     }
     const map = new Map(days.map((d) => [d.key, d]));
-    const fallback = days[days.length - 1];
     auditLogs.forEach((log) => {
+      if (!Number.isFinite(log.createdAtMs)) return;
       const k = new Date(log.createdAtMs).toISOString().slice(0, 10);
-      const bucket = map.get(k) || fallback;
+      const bucket = map.get(k);
+      if (!bucket) return;
       bucket.executions += 1;
       if (log.status === 'failed') bucket.failures += 1;
     });
@@ -144,29 +145,35 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             Department Activity (Live Workflows & Tasks)
           </h3>
           <p className="text-xs text-[#737373] dark:text-[#737373] mb-4">
-            Computed directly from active Firestore workflows and assigned tasks
+            Computed directly from active workspace workflows and assigned tasks
           </p>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={departmentData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" strokeOpacity={0.5} />
-                <XAxis
-                  dataKey="department"
-                  tick={{ fontSize: 11, fill: '#94A3B8' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tick={{ fontSize: 11, fill: '#94A3B8' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip />
-                <Bar dataKey="workflows" name="Workflows" fill="#2563EB" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="tasks" name="Tasks" fill="#6366F1" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {departmentData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-[#737373]">
+                Create workflows or tasks to visualize department activity.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={departmentData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" strokeOpacity={0.5} />
+                  <XAxis
+                    dataKey="department"
+                    tick={{ fontSize: 11, fill: '#94A3B8' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 11, fill: '#94A3B8' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip />
+                  <Bar dataKey="workflows" name="Workflows" fill="#2563EB" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="tasks" name="Tasks" fill="#6366F1" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -178,24 +185,30 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             Breakdown of Voice, Chat, Manual, Scheduled, and Webhook runs
           </p>
           <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={triggerData}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={50}
-                  outerRadius={82}
-                  paddingAngle={3}
-                  stroke="none"
-                >
-                  {triggerData.map((_, idx) => (
-                    <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+            {triggerData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-[#737373]">
+                No workflow trigger runs recorded yet.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={triggerData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={50}
+                    outerRadius={82}
+                    paddingAngle={3}
+                    stroke="none"
+                  >
+                    {triggerData.map((_, idx) => (
+                      <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
           <div className="flex flex-wrap justify-center gap-3 text-xs mt-2">
             {triggerData.map((t, idx) => (
@@ -218,7 +231,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           7-Day Execution & Failure Trend
         </h3>
         <p className="text-xs text-[#737373] dark:text-[#737373] mb-4">
-          Derived from immutable Firestore audit log timestamps
+          Derived from immutable workspace audit log timestamps
         </p>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">

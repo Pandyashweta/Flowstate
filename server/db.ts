@@ -707,7 +707,37 @@ class FlowstateDatabase {
   updateUserProfile(userId: string, patch: Partial<DbUserProfile>): DbUserProfile {
     const profile = this.getUserProfile(userId);
     if (!profile) throw new Error('User profile not found.');
-    Object.assign(profile, patch, { userId, updatedAtMs: Date.now() });
+    const allowed: (keyof DbUserProfile)[] = [
+      'displayName',
+      'jobTitle',
+      'professionalBackground',
+      'profession',
+      'typeOfWork',
+      'responsibilities',
+      'automationGoals',
+      'existingTools',
+      'interactionPreference',
+      'voiceLanguage',
+      'autoSpeakResponses',
+      'requireApprovalForExternal',
+      'notifyApprovals',
+      'notifyFailures',
+      'themePreference',
+      'timezone',
+      'dateFormat',
+      'welcomeSeen',
+      'tutorialCompleted',
+      'tutorialStep',
+      'personalOnboardingCompleted',
+      'personalOnboardingStep',
+      'activeWorkspaceId',
+    ];
+    for (const key of allowed) {
+      if (patch[key] !== undefined) {
+        (profile as unknown as Record<string, unknown>)[key] = patch[key];
+      }
+    }
+    profile.updatedAtMs = Date.now();
     this.persist();
     return profile;
   }
@@ -825,6 +855,7 @@ class FlowstateDatabase {
       name: 'Personal Tasks',
       createdAtMs: now,
     });
+    this.seedWorkspaceIntegrations(ws.id);
 
     profile.activeWorkspaceId = ws.id;
     this.persist();
@@ -908,10 +939,85 @@ class FlowstateDatabase {
     this.store.organizations.push(org);
     this.store.workspaces.push(ws);
     this.store.workspaceMembers.push(member);
+    this.seedWorkspaceIntegrations(ws.id);
     profile.activeWorkspaceId = ws.id;
 
     this.persist();
     return { workspace: ws, organization: org };
+  }
+
+  private seedWorkspaceIntegrations(workspaceId: string): void {
+    const existing = this.store.integrations.some((i) => i.workspaceId === workspaceId);
+    if (existing) return;
+    const now = Date.now();
+    const defaultConnectors = [
+      {
+        key: 'zendesk_ticketing',
+        name: 'Ticket Management',
+        category: 'ticketing',
+        provider: 'Zendesk / Jira Service Desk',
+        endpointUrl: 'https://simulated.flowstate.internal/v1/tickets',
+        description: 'Creates structured support tickets, attaches RAG notes, and assigns engineering queues.',
+      },
+      {
+        key: 'enterprise_email',
+        name: 'Enterprise Email',
+        category: 'email',
+        provider: 'SMTP / Workspace Mail',
+        endpointUrl: 'https://simulated.flowstate.internal/v1/mail',
+        description: 'Sends workflow completion notifications, escalation alerts, and customer updates.',
+      },
+      {
+        key: 'salesforce_crm',
+        name: 'CRM Platform',
+        category: 'crm',
+        provider: 'Salesforce / HubSpot',
+        endpointUrl: 'https://simulated.flowstate.internal/v1/crm',
+        description: 'Retrieves account tiers, renewal dates, and logs customer support escalations.',
+      },
+      {
+        key: 'project_mgmt',
+        name: 'Project Management',
+        category: 'project_management',
+        provider: 'Linear / Asana',
+        endpointUrl: 'https://simulated.flowstate.internal/v1/projects',
+        description: 'Synchronizes workflow subtasks, priorities, owners, and sprint milestones.',
+      },
+      {
+        key: 'enterprise_calendar',
+        name: 'Calendar & Scheduling',
+        category: 'calendar',
+        provider: 'Google Calendar / Outlook',
+        endpointUrl: 'https://simulated.flowstate.internal/v1/calendar',
+        description: 'Books incident review bridges, orientations, and SLA follow-up reminders.',
+      },
+      {
+        key: 'internal_rest_api',
+        name: 'Internal REST APIs',
+        category: 'rest_api',
+        provider: 'Custom Enterprise Webhooks',
+        endpointUrl: 'https://simulated.flowstate.internal/v1/hooks',
+        description: 'Triggers internal runbook webhooks and session cache operations.',
+      },
+    ];
+    for (const item of defaultConnectors) {
+      this.store.integrations.push({
+        id: makeId('int'),
+        workspaceId,
+        key: item.key,
+        name: item.name,
+        category: item.category,
+        provider: item.provider,
+        status: 'connected_simulated',
+        isSimulated: true,
+        endpointUrl: item.endpointUrl,
+        description: item.description,
+        lastSyncAt: new Date(now).toISOString(),
+        executionsCount: 0,
+        createdAtMs: now,
+        updatedAtMs: now,
+      });
+    }
   }
 
   private seedWorkspaceDefaults(
@@ -1210,22 +1316,39 @@ ESCALATION POLICY: Route P1/P2 login failures to Identity & Auth Engineering wit
 
   // --- Tenant-Scoped Data Queries & Mutations ---
   getWorkspaceData(workspaceId: string, userId: string) {
+    const ws = this.getWorkspaceById(workspaceId);
+    const defaultOwnerId = ws?.ownerId || userId;
+    if (ws && !this.store.integrations.some((i) => i.workspaceId === workspaceId)) {
+      this.seedWorkspaceIntegrations(workspaceId);
+      this.persist();
+    }
     const workflows = this.store.workflows
       .filter((w) => w.workspaceId === workspaceId)
-      .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+      .sort((a, b) => b.updatedAtMs - a.updatedAtMs)
+      .map((w) => ({ ...w, ownerId: w.createdByUserId || defaultOwnerId }));
     const tasks = this.store.tasks
       .filter((t) => t.workspaceId === workspaceId)
-      .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+      .sort((a, b) => b.updatedAtMs - a.updatedAtMs)
+      .map((t) => ({ ...t, ownerId: t.createdByUserId || defaultOwnerId }));
     const documents = this.store.documents
       .filter((d) => d.workspaceId === workspaceId)
-      .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+      .sort((a, b) => b.updatedAtMs - a.updatedAtMs)
+      .map((d) => ({ ...d, ownerId: d.uploadedByUserId || defaultOwnerId }));
     const approvals = this.store.approvals
       .filter((a) => a.workspaceId === workspaceId)
-      .sort((a, b) => b.createdAtMs - a.createdAtMs);
-    const integrations = this.store.integrations.filter((i) => i.workspaceId === workspaceId);
+      .sort((a, b) => b.createdAtMs - a.createdAtMs)
+      .map((a) => ({ ...a, ownerId: defaultOwnerId }));
+    const integrations = this.store.integrations
+      .filter((i) => i.workspaceId === workspaceId)
+      .map((i) => ({ ...i, ownerId: defaultOwnerId }));
     const auditLogs = this.store.auditLogs
       .filter((l) => l.workspaceId === workspaceId)
-      .sort((a, b) => b.createdAtMs - a.createdAtMs);
+      .sort((a, b) => b.createdAtMs - a.createdAtMs)
+      .map((l) => ({
+        ...l,
+        ownerId: l.actorUserId || defaultOwnerId,
+        actor: l.actorName || 'System',
+      }));
     const members = this.listWorkspaceMembers(workspaceId);
     const departments = this.listWorkspaceDepartments(workspaceId);
     const invitations = this.listWorkspaceInvitations(workspaceId);
@@ -1264,12 +1387,162 @@ ESCALATION POLICY: Route P1/P2 login failures to Identity & Auth Engineering wit
     return wf;
   }
 
+  createWorkflowFromDraft(input: {
+    workspaceId: string;
+    userId: string;
+    actorName: string;
+    sourcePrompt: string;
+    triggerType: 'voice' | 'chat';
+    ragSources: string[];
+    requireApproval: boolean;
+    draft: {
+      title: string;
+      description: string;
+      category: string;
+      priority: string;
+      recommendedTeam: string;
+      dueDate: string;
+      troubleshootingSummary: string;
+      steps: string[];
+      tasks: {
+        title: string;
+        description: string;
+        assignee: string;
+        department: string;
+        priority: string;
+        dueDate: string;
+        dependencies: string[];
+        integrationAction: string;
+        requiresApproval: boolean;
+      }[];
+      approvalRequest?: {
+        actionType: string;
+        integrationTarget: string;
+        riskLevel: 'low' | 'medium' | 'high';
+        reason: string;
+        proposedPayload: string;
+      } | null;
+    };
+  }): { workflow: DbWorkflow; tasks: DbTask[]; approval: DbApproval | null } {
+    const now = Date.now();
+    const needsApproval = Boolean(input.draft.approvalRequest && input.requireApproval);
+    const wfStatus = needsApproval ? 'awaiting_approval' : 'in_progress';
+
+    const wf = this.createWorkflow({
+      workspaceId: input.workspaceId,
+      createdByUserId: input.userId,
+      title: String(input.draft.title || 'AI Generated Workflow').slice(0, 200),
+      description: String(input.draft.description || '').slice(0, 4000),
+      category: String(input.draft.category || 'Operations').slice(0, 80),
+      status: wfStatus,
+      priority: ['low', 'medium', 'high', 'critical'].includes(input.draft.priority)
+        ? input.draft.priority
+        : 'medium',
+      recommendedTeam: String(input.draft.recommendedTeam || 'Operations').slice(0, 120),
+      triggerType: input.triggerType,
+      sourcePrompt: String(input.sourcePrompt || '').slice(0, 2000),
+      troubleshootingSummary: String(input.draft.troubleshootingSummary || '').slice(0, 5000),
+      durationMs: 1450,
+      steps: Array.isArray(input.draft.steps) ? input.draft.steps.slice(0, 20).map((s) => String(s).slice(0, 300)) : [],
+      ragSources: Array.isArray(input.ragSources) ? input.ragSources.slice(0, 20).map((s) => String(s).slice(0, 200)) : [],
+      dueDate: String(input.draft.dueDate || new Date(now + 86400000).toISOString().slice(0, 10)).slice(0, 40),
+    });
+
+    const createdTasks: DbTask[] = [];
+    const draftTasks = Array.isArray(input.draft.tasks) ? input.draft.tasks.slice(0, 25) : [];
+    for (let idx = 0; idx < draftTasks.length; idx++) {
+      const t = draftTasks[idx];
+      const task = this.createTask({
+        workspaceId: input.workspaceId,
+        workflowId: wf.id,
+        createdByUserId: input.userId,
+        title: String(t.title || `Step ${idx + 1}`).slice(0, 200),
+        description: String(t.description || '').slice(0, 4000),
+        assignee: String(t.assignee || input.actorName || 'Unassigned').slice(0, 120),
+        department: String(t.department || wf.category || 'Operations').slice(0, 80),
+        priority: ['low', 'medium', 'high', 'critical'].includes(t.priority) ? t.priority : 'medium',
+        status: needsApproval && t.requiresApproval ? 'blocked' : idx === 0 ? 'in_progress' : 'todo',
+        dueDate: String(t.dueDate || wf.dueDate || '').slice(0, 40),
+        dependencies: Array.isArray(t.dependencies) ? t.dependencies.slice(0, 10).map(String) : [],
+        comments: [`Generated by FLOWSTATE AI from ${input.triggerType} command.`],
+        integrationAction: String(t.integrationAction || 'Internal Workflow Step [SIMULATED]').slice(0, 200),
+        requiresApproval: Boolean(t.requiresApproval),
+      });
+      createdTasks.push(task);
+    }
+
+    let createdApproval: DbApproval | null = null;
+    if (needsApproval && input.draft.approvalRequest) {
+      createdApproval = this.createApproval({
+        workspaceId: input.workspaceId,
+        workflowId: wf.id,
+        workflowTitle: wf.title,
+        actionType: String(input.draft.approvalRequest.actionType || 'Execute External Action').slice(0, 100),
+        integrationTarget: String(input.draft.approvalRequest.integrationTarget || 'External Connector [SIMULATED]').slice(0, 100),
+        isSimulated: true,
+        riskLevel: ['low', 'medium', 'high'].includes(input.draft.approvalRequest.riskLevel)
+          ? input.draft.approvalRequest.riskLevel
+          : 'high',
+        reason: String(input.draft.approvalRequest.reason || 'Requires human authorization.').slice(0, 1000),
+        proposedPayload: String(input.draft.approvalRequest.proposedPayload || '').slice(0, 4000),
+        requestedBy: input.actorName,
+        status: 'pending',
+        reviewerNote: '',
+        reviewedBy: '',
+      });
+      this.addNotification({
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        type: 'approval_request',
+        title: 'Approval Required',
+        message: `"${wf.title}" requires authorization before external execution.`,
+        linkSection: 'approvals',
+      });
+    }
+
+    this.addAuditLog({
+      workspaceId: input.workspaceId,
+      actorUserId: input.userId,
+      actorName: input.actorName,
+      workflowId: wf.id,
+      workflowTitle: wf.title,
+      eventType: needsApproval ? 'approval_requested' : 'workflow_created',
+      summary: needsApproval
+        ? `Created workflow ${wf.code} with ${createdTasks.length} tasks; paused pending human approval.`
+        : `Created workflow ${wf.code} with ${createdTasks.length} tasks via ${input.triggerType} command.`,
+      status: needsApproval ? 'pending' : 'success',
+      isSimulated: Boolean(input.draft.approvalRequest),
+      durationMs: 1450,
+    });
+
+    this.persist();
+    return { workflow: wf, tasks: createdTasks, approval: createdApproval };
+  }
+
   updateWorkflow(workspaceId: string, workflowId: string, patch: Partial<DbWorkflow>): DbWorkflow {
     const wf = this.store.workflows.find(
       (w) => w.id === workflowId && w.workspaceId === workspaceId
     );
     if (!wf) throw new Error('Workflow not found in active workspace.');
-    Object.assign(wf, patch, { id: wf.id, workspaceId, updatedAtMs: Date.now() });
+    const allowed: (keyof DbWorkflow)[] = [
+      'title',
+      'description',
+      'category',
+      'status',
+      'priority',
+      'recommendedTeam',
+      'troubleshootingSummary',
+      'durationMs',
+      'steps',
+      'ragSources',
+      'dueDate',
+    ];
+    for (const key of allowed) {
+      if (patch[key] !== undefined) {
+        (wf as unknown as Record<string, unknown>)[key] = patch[key];
+      }
+    }
+    wf.updatedAtMs = Date.now();
     this.persist();
     return wf;
   }
@@ -1282,6 +1555,9 @@ ESCALATION POLICY: Route P1/P2 login failures to Identity & Auth Engineering wit
     this.store.workflows.splice(idx, 1);
     this.store.tasks = this.store.tasks.filter(
       (t) => !(t.workspaceId === workspaceId && t.workflowId === workflowId)
+    );
+    this.store.approvals = this.store.approvals.filter(
+      (a) => !(a.workspaceId === workspaceId && a.workflowId === workflowId)
     );
     this.persist();
   }
@@ -1304,9 +1580,47 @@ ESCALATION POLICY: Route P1/P2 login failures to Identity & Auth Engineering wit
   updateTask(workspaceId: string, taskId: string, patch: Partial<DbTask>): DbTask {
     const task = this.store.tasks.find((t) => t.id === taskId && t.workspaceId === workspaceId);
     if (!task) throw new Error('Task not found in active workspace.');
-    Object.assign(task, patch, { id: task.id, workspaceId, updatedAtMs: Date.now() });
+    const allowed: (keyof DbTask)[] = [
+      'title',
+      'description',
+      'assignee',
+      'department',
+      'priority',
+      'status',
+      'dueDate',
+      'dependencies',
+      'comments',
+      'integrationAction',
+      'requiresApproval',
+    ];
+    for (const key of allowed) {
+      if (patch[key] !== undefined) {
+        (task as unknown as Record<string, unknown>)[key] = patch[key];
+      }
+    }
+    task.updatedAtMs = Date.now();
     this.persist();
     return task;
+  }
+
+  updateIntegration(
+    workspaceId: string,
+    integrationId: string,
+    patch: Partial<Pick<DbIntegration, 'status' | 'endpointUrl' | 'executionsCount' | 'lastSyncAt'>>
+  ): DbIntegration {
+    const item = this.store.integrations.find(
+      (i) => i.id === integrationId && i.workspaceId === workspaceId
+    );
+    if (!item) throw new Error('Integration not found in active workspace.');
+    if (patch.status !== undefined) item.status = patch.status;
+    if (patch.endpointUrl !== undefined) item.endpointUrl = String(patch.endpointUrl).slice(0, 500);
+    if (typeof patch.executionsCount === 'number' && Number.isFinite(patch.executionsCount)) {
+      item.executionsCount = Math.max(0, Math.floor(patch.executionsCount));
+    }
+    if (patch.lastSyncAt !== undefined) item.lastSyncAt = String(patch.lastSyncAt).slice(0, 60);
+    item.updatedAtMs = Date.now();
+    this.persist();
+    return item;
   }
 
   deleteTask(workspaceId: string, taskId: string): void {
@@ -1369,7 +1683,7 @@ ESCALATION POLICY: Route P1/P2 login failures to Identity & Auth Engineering wit
     apr.reviewerNote = reviewerNote || '';
     apr.updatedAtMs = Date.now();
 
-    // Update linked workflow status
+    // Update linked workflow & task statuses
     const wf = this.store.workflows.find(
       (w) => w.id === apr.workflowId && w.workspaceId === workspaceId
     );
@@ -1381,6 +1695,33 @@ ESCALATION POLICY: Route P1/P2 login failures to Identity & Auth Engineering wit
           ? 'failed'
           : 'blocked';
       wf.updatedAtMs = Date.now();
+    }
+
+    this.store.tasks.forEach((t) => {
+      if (t.workspaceId === workspaceId && t.workflowId === apr.workflowId) {
+        if (decision === 'approved' && (t.requiresApproval || t.status === 'blocked')) {
+          t.status = 'completed';
+          t.updatedAtMs = Date.now();
+        } else if (decision !== 'approved' && t.requiresApproval) {
+          t.status = 'blocked';
+          t.updatedAtMs = Date.now();
+        }
+      }
+    });
+
+    if (decision === 'approved') {
+      const targetLower = apr.integrationTarget.toLowerCase();
+      const matchedInt = this.store.integrations.find(
+        (i) =>
+          i.workspaceId === workspaceId &&
+          (targetLower.includes(i.name.toLowerCase().split(' ')[0]) ||
+            targetLower.includes(i.category.replace('_', ' ')))
+      );
+      if (matchedInt) {
+        matchedInt.executionsCount += 1;
+        matchedInt.lastSyncAt = new Date().toISOString();
+        matchedInt.updatedAtMs = Date.now();
+      }
     }
 
     this.persist();
@@ -1472,13 +1813,34 @@ ESCALATION POLICY: Route P1/P2 login failures to Identity & Auth Engineering wit
         );
       }
     }
-    // Remove personal workspaces and solo orgs
+    // Remove personal workspaces and solo orgs with full cascade cleanup
     const soloWsIds = new Set(
       this.store.workspaces.filter((w) => w.ownerId === userId).map((w) => w.id)
     );
+    const soloOrgIds = new Set(
+      this.store.workspaces
+        .filter((w) => soloWsIds.has(w.id) && w.organizationId)
+        .map((w) => w.organizationId as string)
+    );
     this.store.workspaces = this.store.workspaces.filter((w) => !soloWsIds.has(w.id));
+    this.store.organizations = this.store.organizations.filter((o) => !soloOrgIds.has(o.id));
     this.store.workspaceMembers = this.store.workspaceMembers.filter(
       (m) => m.userId !== userId && !soloWsIds.has(m.workspaceId)
+    );
+    this.store.departments = this.store.departments.filter((d) => !soloWsIds.has(d.workspaceId));
+    this.store.invitations = this.store.invitations.filter((i) => !soloWsIds.has(i.workspaceId));
+    this.store.workflows = this.store.workflows.filter((w) => !soloWsIds.has(w.workspaceId));
+    this.store.tasks = this.store.tasks.filter((t) => !soloWsIds.has(t.workspaceId));
+    this.store.documents = this.store.documents.filter((d) => !soloWsIds.has(d.workspaceId));
+    this.store.approvals = this.store.approvals.filter((a) => !soloWsIds.has(a.workspaceId));
+    this.store.integrations = this.store.integrations.filter((i) => !soloWsIds.has(i.workspaceId));
+    this.store.auditLogs = this.store.auditLogs.filter((l) => !soloWsIds.has(l.workspaceId));
+    this.store.conversations = this.store.conversations.filter(
+      (c) => c.userId !== userId && !soloWsIds.has(c.workspaceId)
+    );
+    this.store.messages = this.store.messages.filter((m) => !soloWsIds.has(m.workspaceId));
+    this.store.notifications = this.store.notifications.filter(
+      (n) => n.userId !== userId && !soloWsIds.has(n.workspaceId)
     );
     this.store.users = this.store.users.filter((u) => u.id !== userId);
     this.store.userProfiles = this.store.userProfiles.filter((p) => p.userId !== userId);
@@ -1513,13 +1875,22 @@ ESCALATION POLICY: Route P1/P2 login failures to Identity & Auth Engineering wit
     const ws = this.getWorkspaceById(workspaceId);
     if (!ws) throw new Error('Workspace not found.');
     this.store.workspaces = this.store.workspaces.filter((w) => w.id !== workspaceId);
+    if (ws.organizationId) {
+      this.store.organizations = this.store.organizations.filter((o) => o.id !== ws.organizationId);
+    }
     this.store.workspaceMembers = this.store.workspaceMembers.filter(
       (m) => m.workspaceId !== workspaceId
     );
+    this.store.departments = this.store.departments.filter((d) => d.workspaceId !== workspaceId);
+    this.store.invitations = this.store.invitations.filter((i) => i.workspaceId !== workspaceId);
     this.store.workflows = this.store.workflows.filter((w) => w.workspaceId !== workspaceId);
     this.store.tasks = this.store.tasks.filter((t) => t.workspaceId !== workspaceId);
     this.store.documents = this.store.documents.filter((d) => d.workspaceId !== workspaceId);
     this.store.approvals = this.store.approvals.filter((a) => a.workspaceId !== workspaceId);
+    this.store.integrations = this.store.integrations.filter((i) => i.workspaceId !== workspaceId);
+    this.store.auditLogs = this.store.auditLogs.filter((l) => l.workspaceId !== workspaceId);
+    this.store.conversations = this.store.conversations.filter((c) => c.workspaceId !== workspaceId);
+    this.store.messages = this.store.messages.filter((m) => m.workspaceId !== workspaceId);
     this.store.notifications = this.store.notifications.filter(
       (n) => n.workspaceId !== workspaceId
     );

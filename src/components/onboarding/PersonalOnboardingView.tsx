@@ -85,7 +85,7 @@ export const PersonalOnboardingView: React.FC<PersonalOnboardingViewProps> = ({
     professionalBackground: '',
     profession: '',
     responsibilities: '',
-    typeOfWork: 'Operations & Project Management',
+    typeOfWork: 'Operations & Incident Management',
     mainActivities: '',
     automationGoals: [],
     existingTools: [],
@@ -515,7 +515,8 @@ export const PersonalOnboardingView: React.FC<PersonalOnboardingViewProps> = ({
                   <div className="flex justify-between pb-2 border-b border-[#E5E5E5] dark:border-[#262626]">
                     <span className="text-[#737373]">Name & Role:</span>
                     <span className="font-semibold text-[#111111] dark:text-white">
-                      {data.fullName || 'User'} ({data.jobTitle})
+                      {data.fullName || 'User'}
+                      {data.jobTitle ? ` (${data.jobTitle})` : ''}
                     </span>
                   </div>
                   <div className="flex justify-between pb-2 border-b border-[#E5E5E5] dark:border-[#262626]">
@@ -541,7 +542,7 @@ export const PersonalOnboardingView: React.FC<PersonalOnboardingViewProps> = ({
                 <div className="p-3.5 rounded-xl bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] text-xs text-[#404040] dark:text-[#D4D4D4] flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-[#111111] dark:text-white shrink-0" />
                   <span>
-                    Pre-loaded with sample incident playbooks and voice models for instant testing.
+                    Your clean personal workspace is ready with voice commands, workflow tracking, and document search.
                   </span>
                 </div>
               </div>

@@ -35,10 +35,8 @@ try {
 // Preferred Gemini models in priority order
 const CANDIDATE_MODELS = [
   process.env.GEMINI_MODEL,
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
   'gemini-4-hydrogen',
+  'gemini-3.1-flash-lite',
 ].filter(Boolean) as string[];
 
 // Shared server-side Gemini client (API key stays strictly on the server)
@@ -51,7 +49,7 @@ function getGeminiClient(): GoogleGenAI | null {
     apiKey,
     httpOptions: {
       headers: {
-        'User-Agent': 'flowstate-enterprise',
+        'User-Agent': 'aistudio-build',
       },
     },
   });
@@ -139,60 +137,15 @@ async function verifyAuthToken(token: string): Promise<VerifiedUser> {
     };
   }
 
-  // 2. Support local development and test session tokens
-  if (token.startsWith('flowstate-session:') || token.startsWith('flowstate-dev:')) {
-    try {
-      const encoded = token.split(':')[1] || '';
-      const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf-8'));
-      const uid = parsed.uid || 'usr-local-user';
-      const email = parsed.email || 'user@flowstate.local';
-      const name = parsed.name || 'Operations Lead';
-      dbStore.upsertExternalUser({
-        id: uid,
-        email,
-        displayName: name,
-        emailVerified: Boolean(parsed.emailVerified ?? true),
-      });
-      return {
-        uid,
-        email,
-        emailVerified: Boolean(parsed.emailVerified ?? true),
-        name,
-        role: parsed.role || 'Admin',
-      };
-    } catch {
-      return {
-        uid: 'usr-local-user',
-        email: 'user@flowstate.local',
-        emailVerified: true,
-        name: 'Operations Lead',
-        role: 'Admin',
-      };
-    }
-  }
-
-  // Firebase RS256 Verification
+  // 2. Firebase RS256 ID Token Verification
   const parts = token.split('.');
   if (parts.length !== 3) {
-    // If not a standard JWT but valid length in dev mode, provide safe session
-    if (process.env.NODE_ENV !== 'production' && token.length > 10) {
-      return {
-        uid: `dev-${crypto.createHash('md5').update(token).digest('hex').slice(0, 12)}`,
-        email: 'dev@flowstate.local',
-        emailVerified: true,
-        name: 'Enterprise Operator',
-        role: 'Admin',
-      };
-    }
     throw new Error('Malformed bearer token.');
   }
 
   const [headerB64, payloadB64, sigB64] = parts;
-  const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString('utf-8')) as {
-    alg?: string;
-    kid?: string;
-  };
-  const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf-8')) as {
+  let header: { alg?: string; kid?: string };
+  let payload: {
     aud?: string;
     iss?: string;
     sub?: string;
@@ -202,6 +155,12 @@ async function verifyAuthToken(token: string): Promise<VerifiedUser> {
     email_verified?: boolean;
     name?: string;
   };
+  try {
+    header = JSON.parse(Buffer.from(headerB64, 'base64url').toString('utf-8'));
+    payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf-8'));
+  } catch {
+    throw new Error('Malformed token payload.');
+  }
 
   if (header.alg !== 'RS256' || !header.kid) {
     throw new Error('Unsupported token algorithm.');
@@ -223,31 +182,36 @@ async function verifyAuthToken(token: string): Promise<VerifiedUser> {
     }
   }
 
-  try {
-    const certs = await getGooglePublicCerts();
-    const certPem = certs[header.kid];
-    if (certPem) {
-      const verifier = crypto.createVerify('RSA-SHA256');
-      verifier.update(`${headerB64}.${payloadB64}`);
-      verifier.end();
-      const signatureBuf = Buffer.from(sigB64, 'base64url');
-      const valid = verifier.verify(certPem, signatureBuf);
-      if (!valid) {
-        throw new Error('Invalid token signature.');
-      }
-    }
-  } catch (certErr) {
-    // If offline or certificate fetch failed, allow dev verification if not prod
-    if (process.env.NODE_ENV === 'production') {
-      throw certErr;
-    }
+  const certs = await getGooglePublicCerts();
+  const certPem = certs[header.kid];
+  if (!certPem) {
+    throw new Error('Unknown token signing key.');
+  }
+  const verifier = crypto.createVerify('RSA-SHA256');
+  verifier.update(`${headerB64}.${payloadB64}`);
+  verifier.end();
+  const signatureBuf = Buffer.from(sigB64, 'base64url');
+  const valid = verifier.verify(certPem, signatureBuf);
+  if (!valid) {
+    throw new Error('Invalid token signature.');
   }
 
-  return {
-    uid: payload.sub,
-    email: typeof payload.email === 'string' ? payload.email : '',
+  const resolvedEmail = typeof payload.email === 'string' ? payload.email : '';
+  const resolvedName = typeof payload.name === 'string' ? payload.name : undefined;
+
+  // Ensure Firebase-authenticated user is canonically mapped in dbStore
+  const { user: dbUser } = dbStore.upsertExternalUser({
+    id: payload.sub,
+    email: resolvedEmail || `${payload.sub}@flowstate.local`,
+    displayName: resolvedName || resolvedEmail.split('@')[0] || 'Operations Lead',
     emailVerified: Boolean(payload.email_verified),
-    name: typeof payload.name === 'string' ? payload.name : undefined,
+  });
+
+  return {
+    uid: dbUser.id,
+    email: dbUser.email,
+    emailVerified: dbUser.emailVerified,
+    name: resolvedName,
   };
 }
 
@@ -278,96 +242,6 @@ app.use(express.json({ limit: '6mb' }));
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 }, // 15MB max
-});
-
-// --- In-Memory Workspaces Store (Dual-tenant persistence with tenant isolation) ---
-interface StoredWorkspace {
-  id: string;
-  name: string;
-  type: 'personal' | 'organization';
-  ownerId: string;
-  industry?: string;
-  website?: string;
-  country?: string;
-  size?: string;
-  departments: string[];
-  members: {
-    id: string;
-    uid?: string;
-    email: string;
-    name: string;
-    role: string;
-    department: string;
-    status: 'active' | 'invited';
-  }[];
-  createdAtMs: number;
-  updatedAtMs: number;
-}
-
-const workspacesStore = new Map<string, StoredWorkspace>();
-
-// Initialize default template organization
-workspacesStore.set('ws-org-flowstate-hq', {
-  id: 'ws-org-flowstate-hq',
-  name: 'Flowstate Enterprise HQ',
-  type: 'organization',
-  ownerId: 'system',
-  industry: 'Software & Technology',
-  website: 'https://flowstate.ai',
-  country: 'United States',
-  size: '50-250 employees',
-  departments: [
-    'Customer Support',
-    'IT Operations',
-    'Billing & Finance',
-    'HR Management',
-    'Sales Ops',
-    'Identity & Auth Engineering',
-  ],
-  members: [
-    {
-      id: 'm-1',
-      email: 'alex.chen@flowstate.ai',
-      name: 'Alex Chen',
-      role: 'Owner',
-      department: 'Identity & Auth Engineering',
-      status: 'active',
-    },
-    {
-      id: 'm-2',
-      email: 'sarah.jenkins@flowstate.ai',
-      name: 'Sarah Jenkins',
-      role: 'Admin',
-      department: 'Customer Support',
-      status: 'active',
-    },
-    {
-      id: 'm-3',
-      email: 'marcus.vance@flowstate.ai',
-      name: 'Marcus Vance',
-      role: 'Manager',
-      department: 'Customer Support',
-      status: 'active',
-    },
-    {
-      id: 'm-4',
-      email: 'maya.patel@flowstate.ai',
-      name: 'Maya Patel',
-      role: 'Manager',
-      department: 'Billing & Finance',
-      status: 'active',
-    },
-    {
-      id: 'm-5',
-      email: 'elena.rostova@flowstate.ai',
-      name: 'Elena Rostova',
-      role: 'Member',
-      department: 'IT Operations',
-      status: 'active',
-    },
-  ],
-  createdAtMs: Date.now() - 30 * 86400000,
-  updatedAtMs: Date.now(),
 });
 
 // --- Embedding & Semantic Search Utilities (RAG) ---
@@ -1345,10 +1219,36 @@ app.delete('/api/workspaces/:workspaceId/workflows/:id', requireAuth, (req: Auth
   }
 });
 
-app.post('/api/workspaces/:workspaceId/tasks', requireAuth, (req: AuthedRequest, res: Response) => {
+app.post('/api/workspaces/:workspaceId/workflows/from-draft', requireAuth, (req: AuthedRequest, res: Response) => {
   try {
     const { workspaceId } = req.params;
     dbStore.requireWorkspacePermission(req.authUser!.uid, workspaceId, 'workflow.create');
+    const body = req.body || {};
+    if (!body.draft || typeof body.draft !== 'object') {
+      res.status(400).json({ error: 'Proposed workflow draft is required.' });
+      return;
+    }
+    const profile = dbStore.getUserProfile(req.authUser!.uid);
+    const result = dbStore.createWorkflowFromDraft({
+      workspaceId,
+      userId: req.authUser!.uid,
+      actorName: profile?.displayName || req.authUser!.name || 'Operator',
+      sourcePrompt: String(body.sourcePrompt || ''),
+      triggerType: body.triggerType === 'voice' ? 'voice' : 'chat',
+      ragSources: Array.isArray(body.ragSources) ? body.ragSources : [],
+      requireApproval: body.requireApproval !== false,
+      draft: body.draft,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    sendRouteError(res, err, 403);
+  }
+});
+
+app.post('/api/workspaces/:workspaceId/tasks', requireAuth, (req: AuthedRequest, res: Response) => {
+  try {
+    const { workspaceId } = req.params;
+    dbStore.requireWorkspacePermission(req.authUser!.uid, workspaceId, 'task.create');
     const body = req.body || {};
     const task = dbStore.createTask({
       workspaceId,
@@ -1375,9 +1275,55 @@ app.post('/api/workspaces/:workspaceId/tasks', requireAuth, (req: AuthedRequest,
 app.patch('/api/workspaces/:workspaceId/tasks/:id', requireAuth, (req: AuthedRequest, res: Response) => {
   try {
     const { workspaceId, id } = req.params;
-    dbStore.requireWorkspacePermission(req.authUser!.uid, workspaceId, 'workflow.update');
+    dbStore.requireWorkspacePermission(req.authUser!.uid, workspaceId, 'task.update');
     const updated = dbStore.updateTask(workspaceId, id, req.body || {});
     res.json(updated);
+  } catch (err) {
+    sendRouteError(res, err, 403);
+  }
+});
+
+app.delete('/api/workspaces/:workspaceId/tasks/:id', requireAuth, (req: AuthedRequest, res: Response) => {
+  try {
+    const { workspaceId, id } = req.params;
+    dbStore.requireWorkspacePermission(req.authUser!.uid, workspaceId, 'task.update');
+    dbStore.deleteTask(workspaceId, id);
+    res.json({ deleted: true });
+  } catch (err) {
+    sendRouteError(res, err, 403);
+  }
+});
+
+app.patch('/api/workspaces/:workspaceId/integrations/:id', requireAuth, (req: AuthedRequest, res: Response) => {
+  try {
+    const { workspaceId, id } = req.params;
+    dbStore.requireWorkspacePermission(req.authUser!.uid, workspaceId, 'workflow.execute');
+    const updated = dbStore.updateIntegration(workspaceId, id, req.body || {});
+    res.json(updated);
+  } catch (err) {
+    sendRouteError(res, err, 403);
+  }
+});
+
+app.post('/api/workspaces/:workspaceId/audit-logs', requireAuth, (req: AuthedRequest, res: Response) => {
+  try {
+    const { workspaceId } = req.params;
+    dbStore.requireWorkspacePermission(req.authUser!.uid, workspaceId);
+    const body = req.body || {};
+    const profile = dbStore.getUserProfile(req.authUser!.uid);
+    const log = dbStore.addAuditLog({
+      workspaceId,
+      actorUserId: req.authUser!.uid,
+      actorName: String(body.actor || profile?.displayName || req.authUser!.name || 'Operator').slice(0, 120),
+      workflowId: String(body.workflowId || 'system').slice(0, 128),
+      workflowTitle: String(body.workflowTitle || 'Workspace Event').slice(0, 200),
+      eventType: String(body.eventType || 'WORKSPACE_EVENT').slice(0, 80),
+      summary: String(body.summary || '').slice(0, 1000),
+      status: ['success', 'pending', 'failed', 'warning'].includes(body.status) ? body.status : 'success',
+      isSimulated: Boolean(body.isSimulated),
+      durationMs: Number(body.durationMs || 0),
+    });
+    res.status(201).json({ ...log, actor: log.actorName });
   } catch (err) {
     sendRouteError(res, err, 403);
   }
@@ -2297,8 +2243,7 @@ app.post('/api/ai/transcribe', requireAuth, async (req: AuthedRequest, res: Resp
 
     const cleanMime = (mimeType || 'audio/webm').split(';')[0].trim();
     const langHint = language ? ` Language hint: ${language}.` : '';
-
-    const transcriptText = await callGeminiGenerate([
+    const transcribeContents = [
       {
         inlineData: {
           mimeType: cleanMime,
@@ -2308,7 +2253,23 @@ app.post('/api/ai/transcribe', requireAuth, async (req: AuthedRequest, res: Resp
       {
         text: `Transcribe the spoken words in this audio clip verbatim. Return ONLY the plain transcript text with no quotes, timestamps, or commentary. If there is no intelligible speech, return an empty string.${langHint}`,
       },
-    ]);
+    ];
+
+    let transcriptText = '';
+    const client = getGeminiClient();
+    if (client) {
+      try {
+        const resp = await client.models.generateContent({
+          model: 'gemini-3.5-transcribe',
+          contents: transcribeContents as any,
+        });
+        transcriptText = resp.text || '';
+      } catch {
+        transcriptText = await callGeminiGenerate(transcribeContents);
+      }
+    } else {
+      throw new Error('GEMINI_API_KEY_UNAVAILABLE');
+    }
 
     res.json({ transcript: (transcriptText || '').trim() });
   } catch (err) {
@@ -2366,14 +2327,24 @@ app.post('/api/ai/insight', requireAuth, async (req: AuthedRequest, res: Respons
       res.json(JSON.parse(responseText.trim()));
     } catch {
       // Deterministic operational insight fallback
-      const activeWorkflows = Number(summaryStats?.activeWorkflows || 0);
+      const totalWorkflows = Number(summaryStats?.totalWorkflows || 0);
+      const completedWorkflows = Number(summaryStats?.completedWorkflows || 0);
+      const failedWorkflows = Number(summaryStats?.failedWorkflows || 0);
+      const activeWorkflows =
+        summaryStats?.activeWorkflows !== undefined
+          ? Number(summaryStats.activeWorkflows)
+          : Math.max(0, totalWorkflows - completedWorkflows - failedWorkflows);
       const pendingApprovals = Number(summaryStats?.pendingApprovals || 0);
+      const openTasks = Number(summaryStats?.openTasks || 0);
 
       res.json({
-        headline: pendingApprovals > 0
-          ? `${pendingApprovals} Pending Human-in-the-Loop Approvals Requiring Authorization`
-          : 'Operations Running Efficiently with Zero Blocked Workflows',
-        summary: `Current workload contains ${activeWorkflows} active workflows across connected departments. Prioritizing human review on queued external actions maintains enterprise SLA compliance.`,
+        headline:
+          pendingApprovals > 0
+            ? `${pendingApprovals} Pending Human-in-the-Loop Approval${pendingApprovals === 1 ? '' : 's'} Requiring Authorization`
+            : failedWorkflows > 0
+            ? `${failedWorkflows} Workflow${failedWorkflows === 1 ? '' : 's'} Require Recovery Attention`
+            : 'Operations Running Efficiently with Zero Blocked Workflows',
+        summary: `Current workload contains ${activeWorkflows} active workflow${activeWorkflows === 1 ? '' : 's'} (${totalWorkflows} total) and ${openTasks} open task${openTasks === 1 ? '' : 's'} across connected departments.`,
         recommendations: [
           {
             title: 'Review and clear pending approval gates',

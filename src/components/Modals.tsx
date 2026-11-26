@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Mic, Sparkles, X } from 'lucide-react';
 import { NavSection, OperationalInsight, PriorityLevel } from '../types';
 
@@ -33,6 +33,19 @@ export const NewWorkflowModal: React.FC<NewWorkflowModalProps> = ({
   const [dueDate, setDueDate] = useState('');
   const [stepsRaw, setStepsRaw] = useState('');
   const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const uniqueDepartments = useMemo(
+    () => Array.from(new Set(['General', ...departments.filter(Boolean)])),
+    [departments]
+  );
+
+  useEffect(() => {
+    if (open) {
+      setCategory(departments[0] || 'General');
+      setSubmitError(null);
+    }
+  }, [open, departments]);
 
   if (!open) return null;
 
@@ -40,6 +53,7 @@ export const NewWorkflowModal: React.FC<NewWorkflowModalProps> = ({
     e.preventDefault();
     if (!title.trim()) return;
     setSaving(true);
+    setSubmitError(null);
     try {
       const steps = stepsRaw
         .split('\n')
@@ -56,7 +70,13 @@ export const NewWorkflowModal: React.FC<NewWorkflowModalProps> = ({
       });
       setTitle('');
       setDescription('');
+      setTeam('');
+      setDueDate('');
+      setStepsRaw('');
+      setSubmitError(null);
       onClose();
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to create workflow.');
     } finally {
       setSaving(false);
     }
@@ -104,6 +124,11 @@ export const NewWorkflowModal: React.FC<NewWorkflowModalProps> = ({
         </button>
 
         <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+          {submitError && (
+            <div className="p-2.5 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300">
+              {submitError}
+            </div>
+          )}
           <div>
             <label className="block font-medium text-[#525252] dark:text-[#D4D4D4] mb-1">
               Workflow Title
@@ -139,8 +164,7 @@ export const NewWorkflowModal: React.FC<NewWorkflowModalProps> = ({
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
               >
-                <option value="General">General</option>
-                {departments.map((d) => (
+                {uniqueDepartments.map((d) => (
                   <option key={d} value={d}>
                     {d}
                   </option>

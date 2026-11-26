@@ -10,11 +10,22 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { PriorityLevel, TaskItem, TaskStatus, Workflow } from '../types';
+import {
+  PriorityLevel,
+  TaskItem,
+  TaskStatus,
+  TeamMember,
+  UserProfile,
+  Workflow,
+  Workspace,
+} from '../types';
 
 interface TasksViewProps {
   tasks: TaskItem[];
   workflows: Workflow[];
+  workspace?: Workspace | null;
+  profile?: UserProfile | null;
+  teamMembers?: TeamMember[];
   searchQuery: string;
   onCreateTask: (input: {
     workflowId: string;
@@ -45,23 +56,30 @@ const TASK_COLUMNS: { id: TaskStatus; label: string }[] = [
 export const TasksView: React.FC<TasksViewProps> = ({
   tasks,
   workflows,
+  workspace,
+  profile,
+  teamMembers = [],
   searchQuery,
   onCreateTask,
   onUpdateTaskStatus,
   onAddComment,
   onDeleteTask,
 }) => {
+  const defaultAssignee = profile?.displayName || teamMembers[0]?.name || '';
+  const defaultDepartment = workspace?.departments?.[0] || 'General';
+
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [commentInput, setCommentInput] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Create form state
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newWorkflowId, setNewWorkflowId] = useState(workflows[0]?.id || '');
-  const [newAssignee, setNewAssignee] = useState('Marcus Vance');
-  const [newDepartment, setNewDepartment] = useState('Customer Support');
+  const [newAssignee, setNewAssignee] = useState(defaultAssignee);
+  const [newDepartment, setNewDepartment] = useState(defaultDepartment);
   const [newPriority, setNewPriority] = useState<PriorityLevel>('medium');
   const [newDueDate, setNewDueDate] = useState(
     new Date(Date.now() + 86400000).toISOString().slice(0, 10)
@@ -84,31 +102,59 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const targetWfId = newWorkflowId || workflows[0]?.id;
-    if (!targetWfId || !newTitle.trim()) return;
-    await onCreateTask({
-      workflowId: targetWfId,
-      title: newTitle.trim(),
-      description: newDesc.trim() || 'Operational workflow task.',
-      assignee: newAssignee.trim() || 'Unassigned',
-      department: newDepartment.trim() || 'Operations',
-      priority: newPriority,
-      status: 'todo',
-      dueDate: newDueDate,
-      dependencies: newDep.trim() ? [newDep.trim()] : [],
-      requiresApproval: false,
-    });
-    setNewTitle('');
-    setNewDesc('');
-    setNewDep('');
-    setShowCreateModal(false);
+    if (!newTitle.trim()) return;
+    setActionError(null);
+    try {
+      await onCreateTask({
+        workflowId: newWorkflowId || '',
+        title: newTitle.trim(),
+        description: newDesc.trim() || 'Operational workflow task.',
+        assignee: newAssignee.trim() || 'Unassigned',
+        department: newDepartment.trim() || 'General',
+        priority: newPriority,
+        status: 'todo',
+        dueDate: newDueDate,
+        dependencies: newDep.trim() ? [newDep.trim()] : [],
+        requiresApproval: false,
+      });
+      setNewTitle('');
+      setNewDesc('');
+      setNewDep('');
+      setShowCreateModal(false);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to create work item.');
+    }
+  };
+
+  const handleStatusChange = async (task: TaskItem, status: TaskStatus) => {
+    setActionError(null);
+    try {
+      await onUpdateTaskStatus(task, status);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to update task status.');
+    }
   };
 
   const handlePostComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeTask || !commentInput.trim()) return;
-    await onAddComment(activeTask, commentInput.trim());
-    setCommentInput('');
+    setActionError(null);
+    try {
+      await onAddComment(activeTask, commentInput.trim());
+      setCommentInput('');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to post comment.');
+    }
+  };
+
+  const handleDelete = async (taskId: string) => {
+    setActionError(null);
+    try {
+      await onDeleteTask(taskId);
+      setSelectedTaskId(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to delete task.');
+    }
   };
 
   return (
@@ -154,18 +200,33 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
           <button
             type="button"
-            disabled={workflows.length === 0}
             onClick={() => {
               setNewWorkflowId(workflows[0]?.id || '');
+              setNewAssignee(defaultAssignee);
+              setNewDepartment(defaultDepartment);
+              setActionError(null);
               setShowCreateModal(true);
             }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] text-xs font-medium cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] text-xs font-medium cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Work Item</span>
           </button>
         </div>
       </div>
+
+      {actionError && (
+        <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-xs text-red-700 dark:text-red-300 flex items-center justify-between gap-2">
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="underline font-medium cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Kanban Board (Exact Screenshot 3 Card Anatomy) */}
       {viewMode === 'kanban' ? (
@@ -215,18 +276,19 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#737373] dark:text-[#737373]">
                         <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 text-[10px] font-semibold">
-                          {task.assignee
+                          {(task.assignee || 'U')
                             .split(' ')
+                            .filter(Boolean)
                             .map((p) => p[0])
                             .join('')
                             .slice(0, 2)
-                            .toUpperCase()}
+                            .toUpperCase() || 'U'}
                         </span>
                         <span className="truncate max-w-[100px]">{task.department}</span>
                         <span>·</span>
                         <span className="inline-flex items-center gap-1 font-mono tabular-nums">
                           <Calendar className="w-3 h-3" />
-                          {task.dueDate.slice(5)}
+                          {task.dueDate ? task.dueDate.slice(5) : '—'}
                         </span>
                         {task.comments.length > 0 && (
                           <span className="inline-flex items-center gap-0.5 ml-auto font-mono">
@@ -279,7 +341,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                       <select
                         value={t.status}
-                        onChange={(e) => void onUpdateTaskStatus(t, e.target.value as TaskStatus)}
+                        onChange={(e) => void handleStatusChange(t, e.target.value as TaskStatus)}
                         className="text-xs px-2 py-1 rounded-md border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
                       >
                         {TASK_COLUMNS.map((c) => (
@@ -329,7 +391,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 <select
                   value={activeTask.status}
                   onChange={(e) =>
-                    void onUpdateTaskStatus(activeTask, e.target.value as TaskStatus)
+                    void handleStatusChange(activeTask, e.target.value as TaskStatus)
                   }
                   className="text-xs px-3 py-1.5 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-[#FAFAFA] dark:bg-[#161616] font-medium"
                 >
@@ -342,10 +404,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
               </div>
               <button
                 type="button"
-                onClick={async () => {
-                  await onDeleteTask(activeTask.id);
-                  setSelectedTaskId(null);
-                }}
+                onClick={() => void handleDelete(activeTask.id)}
                 className="inline-flex items-center gap-1 text-xs text-[#737373] hover:text-red-600 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -460,14 +519,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
             <div className="space-y-3 text-xs">
               <div>
                 <label className="block font-medium text-[#525252] dark:text-[#D4D4D4] mb-1">
-                  Parent Workflow
+                  Parent Workflow (optional)
                 </label>
                 <select
                   value={newWorkflowId}
                   onChange={(e) => setNewWorkflowId(e.target.value)}
-                  required
                   className="w-full px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
                 >
+                  <option value="">Standalone task (no parent workflow)</option>
                   {workflows.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.code} — {w.title}

@@ -42,6 +42,14 @@ interface SettingsViewProps {
   onUpdateProfile: (
     patch: Partial<Omit<UserProfile, 'uid' | 'role' | 'createdAt' | 'updatedAt'>>
   ) => Promise<void>;
+  onUpdateWorkspace?: (patch: {
+    name?: string;
+    logoUrl?: string;
+    industry?: string;
+    website?: string;
+    country?: string;
+    size?: string;
+  }) => Promise<void>;
   onAddMember: (input: { name: string; role: WorkspaceRole; department: string }) => Promise<void>;
   onInviteMember?: (email: string, role: WorkspaceRole, department: string) => Promise<void>;
   onUpdateMemberRole: (member: TeamMember, role: WorkspaceRole) => Promise<void>;
@@ -70,6 +78,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   themePreference = 'system',
   onChangeTheme,
   onUpdateProfile,
+  onUpdateWorkspace,
   onInviteMember,
   onUpdateMemberRole,
   onRemoveMember,
@@ -135,8 +144,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setOrgLogoUrl(workspace.logoUrl || '');
       setOrgIndustry(workspace.industry || 'Software & Technology');
       setOrgWebsite(workspace.website || '');
+      setInviteDept(workspace.departments?.[0] || 'General');
     }
   }, [profile, workspace]);
+
+  useEffect(() => {
+    if (!isOrg && tab === 'team') {
+      setTab('profile');
+    }
+  }, [isOrg, tab]);
 
   const showToast = (type: 'success' | 'error', msg: string) => {
     setFeedback({ type, msg });
@@ -155,14 +171,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     let content = '';
     let mimeType = 'text/plain;charset=utf-8';
 
+    const safeIso = (ms: number) =>
+      Number.isFinite(ms) ? new Date(ms).toISOString() : new Date().toISOString();
+
     if (format === 'csv') {
       const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const header = ['id', 'timestamp_iso', 'actor', 'event_type', 'workflow_title', 'status', 'duration_ms', 'summary'].join(',');
       const rows = auditLogs.map((log) =>
         [
           esc(log.id),
-          esc(new Date(log.createdAtMs).toISOString()),
-          esc(log.actor),
+          esc(safeIso(log.createdAtMs)),
+          esc(log.actor || 'System'),
           esc(log.eventType),
           esc(log.workflowTitle),
           esc(log.status),
@@ -181,7 +200,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           count: auditLogs.length,
           logs: auditLogs.map((log) => ({
             ...log,
-            timestampIso: new Date(log.createdAtMs).toISOString(),
+            timestampIso: safeIso(log.createdAtMs),
           })),
         },
         null,
@@ -197,7 +216,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         '--------------------------------------------------------------------------------',
         ...auditLogs.map(
           (log) =>
-            `[${new Date(log.createdAtMs).toISOString()}] [${log.status.toUpperCase()}] ${log.actor} | ${log.eventType} | ${log.workflowTitle} — ${log.summary}`
+            `[${safeIso(log.createdAtMs)}] [${log.status.toUpperCase()}] ${log.actor || 'System'} | ${log.eventType} | ${log.workflowTitle} — ${log.summary}`
         ),
       ];
       content = lines.join('\n');
@@ -218,24 +237,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await apiPatchJson('/api/profile', {
-        displayName: displayName.trim() || 'User',
-        jobTitle: jobTitle.trim(),
-        professionalBackground: bio.trim(),
-      });
       await onUpdateProfile({
         displayName: displayName.trim() || 'User',
         jobTitle: jobTitle.trim(),
         professionalBackground: bio.trim(),
         organizationName: wsName.trim(),
       });
-      if (workspace && canManageOrg && wsName.trim()) {
-        await apiPatchJson(`/api/workspaces/${workspace.id}`, {
+      if (workspace && (canManageOrg || !isOrg) && wsName.trim()) {
+        const wsPatch = {
           name: wsName.trim(),
           logoUrl: orgLogoUrl,
           industry: orgIndustry,
           website: orgWebsite,
-        }).catch(() => {});
+        };
+        if (onUpdateWorkspace) {
+          await onUpdateWorkspace(wsPatch);
+        } else {
+          await apiPatchJson(`/api/workspaces/${workspace.id}`, wsPatch);
+        }
       }
       showToast('success', 'Profile and workspace settings saved.');
     } catch (err) {
@@ -246,16 +265,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleSavePreferences = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await apiPatchJson('/api/profile', {
-        voiceLanguage: voiceLang,
-        autoSpeakResponses: autoSpeak,
-        requireApprovalForExternal: requireApproval,
-        notifyApprovals,
-        notifyFailures,
-        themePreference,
-        timezone,
-        dateFormat,
-      });
       await onUpdateProfile({
         voiceLanguage: voiceLang,
         autoSpeakResponses: autoSpeak,
@@ -472,7 +481,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (!file || file.size > 1024 * 1024) return;
+                          if (!file) return;
+                          if (file.size > 1024 * 1024) {
+                            showToast('error', 'Logo image must be smaller than 1 MB.');
+                            return;
+                          }
                           const reader = new FileReader();
                           reader.onload = () => {
                             if (typeof reader.result === 'string') {
@@ -882,7 +895,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <>
                           <select
                             value={m.role}
-                            onChange={(e) => void onUpdateMemberRole(m, e.target.value as WorkspaceRole)}
+                            onChange={async (e) => {
+                              const nextRole = e.target.value as WorkspaceRole;
+                              try {
+                                await onUpdateMemberRole(m, nextRole);
+                                showToast('success', `Updated ${m.name} to ${nextRole}.`);
+                              } catch (err) {
+                                showToast(
+                                  'error',
+                                  err instanceof Error ? err.message : 'Failed to update member role.'
+                                );
+                              }
+                            }}
                             className="px-2.5 py-1 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
                           >
                             {ORG_ROLES.filter((r) => r !== 'Owner').map((r) => (
@@ -895,9 +919,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             <div className="flex items-center gap-1">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  void onRemoveMember(m.id);
-                                  setConfirmRemoveId(null);
+                                onClick={async () => {
+                                  try {
+                                    await onRemoveMember(m.id);
+                                    setConfirmRemoveId(null);
+                                    showToast('success', `Removed ${m.name} from workspace.`);
+                                  } catch (err) {
+                                    showToast(
+                                      'error',
+                                      err instanceof Error ? err.message : 'Failed to remove member.'
+                                    );
+                                  }
                                 }}
                                 className="px-2 py-1 rounded-lg bg-red-600 text-white font-semibold cursor-pointer"
                               >

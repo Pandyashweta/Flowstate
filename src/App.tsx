@@ -47,10 +47,20 @@ function FlowstateApp() {
   const [darkMode, setDarkMode] = useState(false);
 
   useEffect(() => {
-    if (themePreference === 'dark') setDarkMode(true);
-    else if (themePreference === 'light') setDarkMode(false);
-    else if (typeof window !== 'undefined') {
-      setDarkMode(window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (themePreference === 'dark') {
+      setDarkMode(true);
+      return;
+    }
+    if (themePreference === 'light') {
+      setDarkMode(false);
+      return;
+    }
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      const media = window.matchMedia('(prefers-color-scheme: dark)');
+      setDarkMode(media.matches);
+      const onChange = (e: MediaQueryListEvent) => setDarkMode(e.matches);
+      media.addEventListener('change', onChange);
+      return () => media.removeEventListener('change', onChange);
     }
   }, [themePreference]);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
@@ -88,16 +98,37 @@ function FlowstateApp() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  // Sync user voice preferences when profile loads
+  // Sync user voice & theme preferences when profile loads
   useEffect(() => {
     if (data.profile) {
       setAutoSpeak(data.profile.autoSpeakResponses ?? true);
       if (data.profile.voiceLanguage) {
         voice.setLanguage(data.profile.voiceLanguage);
       }
+      if (
+        data.profile.themePreference === 'light' ||
+        data.profile.themePreference === 'dark' ||
+        data.profile.themePreference === 'system'
+      ) {
+        setThemePreference(data.profile.themePreference);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.profile?.voiceLanguage, data.profile?.autoSpeakResponses]);
+  }, [
+    data.profile?.voiceLanguage,
+    data.profile?.autoSpeakResponses,
+    data.profile?.themePreference,
+  ]);
+
+  // Clear ephemeral workspace UI state when switching workspaces or signing out
+  useEffect(() => {
+    setMessages([]);
+    setCommandError(null);
+    setSelectedWorkflow(null);
+    setInsightData(null);
+    setInsightError(null);
+    setDepartmentFilter('All');
+  }, [data.activeWorkspaceId, data.user?.uid]);
 
   // Sync Tailwind v4 .dark class on <html>
   useEffect(() => {
@@ -201,6 +232,7 @@ function FlowstateApp() {
     [
       isCommandProcessing,
       messages,
+      data.activeWorkspace?.id,
       data.knowledgeDocs,
       data.integrations,
       data.teamMembers,
@@ -259,8 +291,8 @@ function FlowstateApp() {
                       : 'Workflow Dispatched',
                     status: 'completed',
                     detail: created.approvalId
-                      ? 'Persisted to Firestore and awaiting human sign-off'
-                      : 'Persisted to Firestore and active in Operations',
+                      ? 'Saved to workspace and awaiting human sign-off'
+                      : 'Saved to workspace and active in Operations',
                   },
                 ],
               }
@@ -379,6 +411,16 @@ function FlowstateApp() {
     );
   }
 
+  // Loading state while syncing workspaces for signed-in user
+  if (data.seeding && data.workspaces.length === 0 && !data.onboardingNeeded) {
+    return (
+      <div className="min-h-screen bg-[#FAFAFA] dark:bg-[#0A0A0A] flex flex-col items-center justify-center p-6 text-[#525252] dark:text-[#D4D4D4]">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
+        <span className="font-display font-medium text-sm">Loading your workspaces...</span>
+      </div>
+    );
+  }
+
   // First-time Workspace Selection (when user has no workspaces yet)
   if ((data.needsWorkspaceSetup || data.workspaces.length === 0) && !data.onboardingNeeded) {
     return (
@@ -487,7 +529,7 @@ function FlowstateApp() {
         activeSection={activeSection}
         onOpenMobileMenu={() => setMobileMenuOpen(true)}
         darkMode={darkMode}
-        onToggleDarkMode={() => setDarkMode((d) => !d)}
+        onToggleDarkMode={() => setThemePreference(darkMode ? 'light' : 'dark')}
         onOpenNewWorkflow={() => setNewWorkflowModalOpen(true)}
         onRequestInsight={() => void handleRequestInsight()}
         insightLoading={insightLoading}
@@ -670,6 +712,7 @@ function FlowstateApp() {
                 workflows={data.workflows}
                 tasks={data.tasks}
                 auditLogs={data.auditLogs}
+                departments={data.activeWorkspace?.departments}
                 initialDepartmentFilter={departmentFilter}
                 searchQuery={searchQuery}
                 selectedWorkflow={selectedWorkflow}
@@ -684,6 +727,9 @@ function FlowstateApp() {
               <TasksView
                 tasks={data.tasks}
                 workflows={data.workflows}
+                workspace={data.activeWorkspace}
+                profile={data.profile}
+                teamMembers={data.teamMembers}
                 searchQuery={searchQuery}
                 onCreateTask={data.createTask}
                 onUpdateTaskStatus={data.updateTaskStatus}
@@ -734,6 +780,7 @@ function FlowstateApp() {
                 themePreference={themePreference}
                 onChangeTheme={(t) => setThemePreference(t)}
                 onUpdateProfile={data.updateProfileSettings}
+                onUpdateWorkspace={data.updateWorkspaceDetails}
                 onAddMember={data.addTeamMember}
                 onInviteMember={data.inviteWorkspaceMember}
                 onUpdateMemberRole={data.updateTeamMemberRole}

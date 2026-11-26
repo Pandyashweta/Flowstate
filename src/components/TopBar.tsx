@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Bell,
   Download,
   Globe,
+  Lightbulb,
+  Loader2,
   LogOut,
   Menu,
   Moon,
@@ -11,6 +13,7 @@ import {
   Sun,
   X,
 } from 'lucide-react';
+import defaultAvatar from '../assets/images/avatar_enterprise_lead_1795690516596.jpg';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import {
   ApprovalItem,
@@ -56,6 +59,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenMobileMenu,
   darkMode,
   onToggleDarkMode,
+  onRequestInsight,
+  insightLoading,
   aiDrawerOpen,
   onToggleAiDrawer,
   pendingApprovals,
@@ -79,9 +84,25 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const [notifOpen, setNotifOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const unreadCount = notifications.filter((n) => !n.read).length;
   const alertCount = pendingApprovals.length + failedWorkflows.length + unreadCount;
   const activeWs = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      } else if (e.key === 'Escape') {
+        setNotifOpen(false);
+        setMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <header className="h-12 bg-[#FAFAFA] dark:bg-[#0E0E0E] border-b border-[#E5E5E5] dark:border-[#262626] px-3 sm:px-4 flex items-center justify-between gap-3 shrink-0 z-30">
@@ -112,6 +133,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <div className="relative w-full">
           <Search className="w-3.5 h-3.5 text-[#737373] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
+            ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange?.(e.target.value)}
@@ -146,7 +168,9 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-xl shadow-lg p-3 z-50">
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
+              <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-xl shadow-lg p-3 z-50">
               <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#E5E5E5] dark:border-[#262626]">
                 <span className="text-xs font-semibold text-[#111111] dark:text-white">
                   Notifications
@@ -252,9 +276,26 @@ export const TopBar: React.FC<TopBarProps> = ({
                   ))}
                 </div>
               )}
-            </div>
+              </div>
+            </>
           )}
         </div>
+
+        {/* Operational AI Insights Button */}
+        <button
+          type="button"
+          onClick={onRequestInsight}
+          disabled={insightLoading}
+          title="Operational AI Insights"
+          aria-label="Operational AI Insights"
+          className="hidden sm:flex items-center justify-center w-8 h-8 rounded-md text-[#525252] dark:text-[#D4D4D4] hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] transition-colors cursor-pointer disabled:opacity-50"
+        >
+          {insightLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Lightbulb className="w-4 h-4" />
+          )}
+        </button>
 
         {/* PWA Install Button */}
         {onInstallPwa && (
@@ -307,7 +348,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             className="flex items-center p-0.5 rounded-full hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] transition-colors cursor-pointer"
           >
             <img
-              src={userPhotoUrl || '/src/assets/images/avatar_enterprise_lead_1795690516596.jpg'}
+              src={userPhotoUrl || defaultAvatar}
               alt={profile?.displayName || 'User'}
               referrerPolicy="no-referrer"
               className="w-7 h-7 rounded-full object-cover border border-[#E5E5E5] dark:border-[#333333]"
@@ -315,7 +356,9 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-xl shadow-lg p-2 z-50">
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-xl shadow-lg p-2 z-50">
               <div className="px-2.5 py-2 border-b border-[#E5E5E5] dark:border-[#262626] mb-1">
                 <div className="text-xs font-semibold text-[#111111] dark:text-white truncate">
                   {profile?.displayName || 'Operations Lead'}
@@ -358,7 +401,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Sign Out</span>
               </button>
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
   ArrowUpRight,
@@ -36,6 +36,13 @@ export const AiAssistantDrawer: React.FC<AiAssistantDrawerProps> = ({
   activeWorkspace,
 }) => {
   const [text, setText] = useState('');
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (messagesScrollRef.current) {
+      messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+    }
+  }, [messages, isProcessing, open]);
 
   if (!open) return null;
 
@@ -81,7 +88,7 @@ export const AiAssistantDrawer: React.FC<AiAssistantDrawerProps> = ({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
+      <div ref={messagesScrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
         {messages.length === 0 ? (
           <div className="py-6 space-y-3">
             <p className="text-[#737373] leading-relaxed">
@@ -90,25 +97,27 @@ export const AiAssistantDrawer: React.FC<AiAssistantDrawerProps> = ({
             <div className="space-y-1.5">
               <button
                 type="button"
+                disabled={isProcessing}
                 onClick={() =>
                   void onSendCommand(
                     'Show workflows or tasks awaiting approval or attention.',
                     'text'
                   )
                 }
-                className="w-full text-left px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#262626] hover:border-[#A3A3A3] dark:hover:border-[#525252] bg-[#FAFAFA] dark:bg-[#161616] text-[#404040] dark:text-[#D4D4D4] transition-colors cursor-pointer"
+                className="w-full text-left px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#262626] hover:border-[#A3A3A3] dark:hover:border-[#525252] bg-[#FAFAFA] dark:bg-[#161616] text-[#404040] dark:text-[#D4D4D4] transition-colors cursor-pointer disabled:opacity-50"
               >
                 Show workflows awaiting approval
               </button>
               <button
                 type="button"
+                disabled={isProcessing}
                 onClick={() =>
                   void onSendCommand(
                     'Summarize my workspace tasks and open priorities.',
                     'text'
                   )
                 }
-                className="w-full text-left px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#262626] hover:border-[#A3A3A3] dark:hover:border-[#525252] bg-[#FAFAFA] dark:bg-[#161616] text-[#404040] dark:text-[#D4D4D4] transition-colors cursor-pointer"
+                className="w-full text-left px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#262626] hover:border-[#A3A3A3] dark:hover:border-[#525252] bg-[#FAFAFA] dark:bg-[#161616] text-[#404040] dark:text-[#D4D4D4] transition-colors cursor-pointer disabled:opacity-50"
               >
                 Summarize open workspace tasks
               </button>

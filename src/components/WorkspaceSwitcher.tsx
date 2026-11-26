@@ -45,32 +45,28 @@ export const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({
 
   const roleStyle = ROLE_BADGE_STYLES[activeWorkspace.role] || ROLE_BADGE_STYLES.Member;
 
-  if (collapsed) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        title={activeWorkspace.name}
-        className="w-10 h-10 rounded-xl bg-[#F2F2F2] dark:bg-[#202020] flex items-center justify-center text-[#111111] dark:text-white hover:bg-[#E5E5E5] dark:hover:bg-[#2A2A2A] transition-colors mx-auto cursor-pointer"
-      >
-        {activeWorkspace.logoUrl ? (
-          <img
-            src={activeWorkspace.logoUrl}
-            alt={activeWorkspace.name}
-            className="w-6 h-6 rounded-md object-cover"
-          />
-        ) : activeWorkspace.type === 'personal' ? (
-          <Briefcase className="w-4 h-4" />
-        ) : (
-          <Building2 className="w-4 h-4" />
-        )}
-      </button>
-    );
-  }
-
   return (
-    <div className={compactHeader ? 'relative' : 'relative w-full'}>
-      {compactHeader ? (
+    <div className={compactHeader || collapsed ? 'relative' : 'relative w-full'}>
+      {collapsed ? (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          title={activeWorkspace.name}
+          className="w-10 h-10 rounded-xl bg-[#F2F2F2] dark:bg-[#202020] flex items-center justify-center text-[#111111] dark:text-white hover:bg-[#E5E5E5] dark:hover:bg-[#2A2A2A] transition-colors mx-auto cursor-pointer"
+        >
+          {activeWorkspace.logoUrl ? (
+            <img
+              src={activeWorkspace.logoUrl}
+              alt={activeWorkspace.name}
+              className="w-6 h-6 rounded-md object-cover"
+            />
+          ) : activeWorkspace.type === 'personal' ? (
+            <Briefcase className="w-4 h-4" />
+          ) : (
+            <Building2 className="w-4 h-4" />
+          )}
+        </button>
+      ) : compactHeader ? (
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -102,42 +98,42 @@ export const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({
           onClick={() => setOpen((v) => !v)}
           className="w-full p-2 rounded-xl border border-[#E5E5E5] dark:border-[#262626] bg-[#FAFAFA] dark:bg-[#161616] hover:bg-[#F2F2F2] dark:hover:bg-[#1F1F1F]/80 transition-all flex items-center justify-between gap-2.5 cursor-pointer text-left"
         >
-        <div className="flex items-center gap-2.5 min-w-0">
-          {activeWorkspace.logoUrl ? (
-            <img
-              src={activeWorkspace.logoUrl}
-              alt={activeWorkspace.name}
-              className="w-8 h-8 rounded-lg object-cover shrink-0 border border-[#E5E5E5] dark:border-[#262626]"
-            />
-          ) : (
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-[#111111] dark:bg-white text-white dark:text-[#111111]">
-              {activeWorkspace.type === 'personal' ? (
-                <Briefcase className="w-4 h-4" />
-              ) : (
-                <Building2 className="w-4 h-4" />
-              )}
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="font-semibold text-xs text-[#111111] dark:text-white truncate">
-                {activeWorkspace.name}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span
-                className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-semibold ${roleStyle.bg} ${roleStyle.text}`}
-              >
-                {activeWorkspace.role}
-              </span>
-              <span className="text-[10px] text-[#737373] capitalize">
-                • {activeWorkspace.type}
-              </span>
+          <div className="flex items-center gap-2.5 min-w-0">
+            {activeWorkspace.logoUrl ? (
+              <img
+                src={activeWorkspace.logoUrl}
+                alt={activeWorkspace.name}
+                className="w-8 h-8 rounded-lg object-cover shrink-0 border border-[#E5E5E5] dark:border-[#262626]"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-[#111111] dark:bg-white text-white dark:text-[#111111]">
+                {activeWorkspace.type === 'personal' ? (
+                  <Briefcase className="w-4 h-4" />
+                ) : (
+                  <Building2 className="w-4 h-4" />
+                )}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="font-semibold text-xs text-[#111111] dark:text-white truncate">
+                  {activeWorkspace.name}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span
+                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-semibold ${roleStyle.bg} ${roleStyle.text}`}
+                >
+                  {activeWorkspace.role}
+                </span>
+                <span className="text-[10px] text-[#737373] capitalize">
+                  • {activeWorkspace.type}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-        <ChevronDown className="w-3.5 h-3.5 text-[#737373] shrink-0" />
-      </button>
+          <ChevronDown className="w-3.5 h-3.5 text-[#737373] shrink-0" />
+        </button>
       )}
 
       {/* Dropdown Menu */}
@@ -147,7 +143,15 @@ export const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({
             className="fixed inset-0 z-30"
             onClick={() => setOpen(false)}
           />
-          <div className={`absolute left-0 top-full mt-2 bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-xl shadow-xl p-2 z-40 space-y-1 ${compactHeader ? 'w-64' : 'right-0'}`}>
+          <div
+            className={`absolute bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-xl shadow-xl p-2 z-40 space-y-1 ${
+              collapsed
+                ? 'left-full top-0 ml-2 w-64'
+                : compactHeader
+                ? 'left-0 top-full mt-2 w-64'
+                : 'left-0 right-0 top-full mt-2'
+            }`}
+          >
             <div className="px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider text-[#737373] font-semibold">
               Workspaces ({workspaces.length})
             </div>

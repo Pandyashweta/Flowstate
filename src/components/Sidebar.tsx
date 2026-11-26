@@ -146,7 +146,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
               {/* Workspace dropdown */}
               {wsSwitcherOpen && (
-                <div className="absolute left-0 top-full mt-1.5 w-52 bg-white dark:bg-[#1A1A1A] border border-[#E5E5E5] dark:border-[#262626] rounded-xl shadow-lg z-50 py-1 overflow-hidden">
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setWsSwitcherOpen(false)} />
+                  <div className="absolute left-0 top-full mt-1.5 w-52 bg-white dark:bg-[#1A1A1A] border border-[#E5E5E5] dark:border-[#262626] rounded-xl shadow-lg z-50 py-1 overflow-hidden">
                   {workspaces.map((ws) => (
                     <button
                       key={ws.id}
@@ -180,7 +182,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <span>New organization</span>
                     </button>
                   </div>
-                </div>
+                  </div>
+                </>
               )}
             </div>
 
@@ -239,7 +242,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onClick={() => { onNavigate(item.id); if (isMobile) onCloseMobile(); }}
                 title={collapsed && !isMobile ? item.label : undefined}
-                className={`w-full flex items-center rounded-md text-[13px] transition-colors cursor-pointer ${
+                className={`relative w-full flex items-center rounded-md text-[13px] transition-colors cursor-pointer ${
                   collapsed && !isMobile ? 'justify-center gap-0 py-2.5' : 'gap-2.5 px-2.5 py-1.5'
                 } ${
                   isActive
@@ -347,6 +350,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return (
             <button
               key={item.id}
+              data-tour={`nav-${item.id}`}
               type="button"
               onClick={() => { onNavigate(item.id); if (isMobile) onCloseMobile(); }}
               title={collapsed && !isMobile ? item.label : undefined}

@@ -112,18 +112,27 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
   const [approvingInline, setApprovingInline] = useState(false);
   const [commitFeedback, setCommitFeedback] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const lastAutoSelectedMsgIdRef = useRef<string | null>(null);
 
-  // Sync latest proposed workflow into right-hand preview pane automatically
+  // Sync newly arrived proposed workflow into right-hand preview pane without snapping back user selection
   useEffect(() => {
+    if (messages.length === 0) {
+      lastAutoSelectedMsgIdRef.current = null;
+      setSelectedDraftMsgId(null);
+      setEditableDraft(null);
+      setCommitFeedback(null);
+      return;
+    }
     const latestWithWorkflow = [...messages]
       .reverse()
       .find((m) => m.role === 'assistant' && m.proposedWorkflow);
-    if (latestWithWorkflow && latestWithWorkflow.id !== selectedDraftMsgId) {
+    if (latestWithWorkflow && latestWithWorkflow.id !== lastAutoSelectedMsgIdRef.current) {
+      lastAutoSelectedMsgIdRef.current = latestWithWorkflow.id;
       setSelectedDraftMsgId(latestWithWorkflow.id);
       setEditableDraft(latestWithWorkflow.proposedWorkflow ?? null);
       setCommitFeedback(null);
     }
-  }, [messages, selectedDraftMsgId]);
+  }, [messages]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -164,7 +173,7 @@ export const CommandCenterView: React.FC<CommandCenterViewProps> = ({
       const res = await onCommitWorkflow(activeMessage.id, editableDraft, submitForApproval);
       setCommitFeedback(
         res.approvalId
-          ? 'Workflow saved to Firestore & queued in Approvals Center for human authorization.'
+          ? 'Workflow saved & queued in Approvals Center for human authorization.'
           : 'Workflow and tasks created and started in Operations.'
       );
     } catch (err) {

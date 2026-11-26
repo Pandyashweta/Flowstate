@@ -1,19 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
-import {
-  collection,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  serverTimestamp,
-  setDoc,
-  Timestamp,
-  updateDoc,
-  where,
-  writeBatch,
-} from 'firebase/firestore';
-import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../lib/firebase';
+import { auth, googleProvider } from '../lib/firebase';
 import {
   apiDeleteJson,
   apiGetJson,
@@ -23,8 +10,6 @@ import {
   setStoredSessionToken,
 } from '../lib/api';
 import {
-  getActiveWorkspaceId,
-  loadUserWorkspaces,
   saveOrgOnboarding,
   savePersonalOnboarding,
   saveUserWorkspaces,
@@ -43,7 +28,6 @@ import {
   TaskItem,
   TaskStatus,
   TeamMember,
-  TriggerType,
   UserProfile,
   UserRole,
   Workflow,
@@ -52,18 +36,72 @@ import {
   WorkspaceRole,
 } from '../types';
 
-function tsToMs(val: unknown): number {
-  if (val instanceof Timestamp) return val.toMillis();
-  if (val && typeof val === 'object' && 'seconds' in val) {
-    const s = (val as { seconds: number }).seconds;
-    return s * 1000;
-  }
-  return Date.now();
+type BackendWorkspaceSummary = {
+  workspace: {
+    id: string;
+    name: string;
+    type: 'personal' | 'organization';
+    ownerId: string;
+    onboardingCompleted: boolean;
+    createdAtMs: number;
+    updatedAtMs: number;
+  };
+  role: WorkspaceRole;
+  organization: {
+    logoUrl?: string;
+    industry?: string;
+    website?: string;
+    country?: string;
+    size?: string;
+  } | null;
+  departments: { name: string }[];
+};
+
+type BackendWorkspaceDataResponse = {
+  workflows: Workflow[];
+  tasks: TaskItem[];
+  documents: KnowledgeDoc[];
+  approvals: ApprovalItem[];
+  integrations: IntegrationItem[];
+  auditLogs: (AuditLogItem & { actorName?: string })[];
+  notifications: NotificationItem[];
+  members: {
+    id: string;
+    userId: string;
+    name: string;
+    email?: string;
+    roleId: WorkspaceRole;
+    department: string;
+    status: 'active' | 'suspended';
+    joinedAtMs?: number;
+    updatedAtMs?: number;
+  }[];
+};
+
+function mapBackendMembers(
+  workspaceId: string,
+  members: BackendWorkspaceDataResponse['members'] = []
+): TeamMember[] {
+  return members.map((m) => ({
+    id: m.id,
+    ownerId: m.userId,
+    workspaceId,
+    name: m.name,
+    role: m.roleId,
+    department: m.department,
+    status: m.status === 'active' ? 'active' : 'invited',
+    createdAtMs: m.joinedAtMs || Date.now(),
+    updatedAtMs: m.updatedAtMs || Date.now(),
+  }));
 }
 
-function makeId(prefix: string): string {
-  const rand = Math.random().toString(36).slice(2, 9);
-  return `${prefix}-${Date.now().toString(36)}-${rand}`.replace(/[^a-zA-Z0-9_-]/g, '');
+function normalizeAuditLogs(
+  logs: (AuditLogItem & { actorName?: string })[] = []
+): AuditLogItem[] {
+  return logs.map((l) => ({
+    ...l,
+    actor: l.actor || l.actorName || 'System',
+  }));
 }
 
 export function useFlowstateData() {
@@ -95,211 +133,236 @@ export function useFlowstateData() {
   const [tutorialCompleted, setTutorialCompleted] = useState<boolean>(true);
   const [tutorialStep, setTutorialStep] = useState<number>(1);
 
-  // Helper to map backend workspace summary into frontend Workspace type
-  const mapBackendWorkspaces = useCallback(
-    (
-      rows: {
-        workspace: { id: string; name: string; type: 'personal' | 'organization'; ownerId: string; onboardingCompleted: boolean; createdAtMs: number; updatedAtMs: number };
-        role: WorkspaceRole;
-        organization: { logoUrl?: string; industry?: string; website?: string; country?: string; size?: string } | null;
-        departments: { name: string }[];
-      }[]
-    ): Workspace[] => {
-      return rows.map((r) => ({
-        id: r.workspace.id,
-        name: r.workspace.name,
-        type: r.workspace.type,
-        ownerId: r.workspace.ownerId,
-        role: r.role,
-        logoUrl: r.organization?.logoUrl,
-        industry: r.organization?.industry,
-        website: r.organization?.website,
-        country: r.organization?.country,
-        size: r.organization?.size,
-        departments: r.departments.map((d) => d.name),
-        members: [],
-        onboardingCompleted: r.workspace.onboardingCompleted,
-        createdAtMs: r.workspace.createdAtMs,
-        updatedAtMs: r.workspace.updatedAtMs,
-      }));
+  const syncInFlightRef = useRef<Promise<void> | null>(null);
+
+  const mapBackendWorkspaces = useCallback((rows: BackendWorkspaceSummary[]): Workspace[] => {
+    return rows.map((r) => ({
+      id: r.workspace.id,
+      name: r.workspace.name,
+      type: r.workspace.type,
+      ownerId: r.workspace.ownerId,
+      role: r.role,
+      logoUrl: r.organization?.logoUrl,
+      industry: r.organization?.industry,
+      website: r.organization?.website,
+      country: r.organization?.country,
+      size: r.organization?.size,
+      departments: r.departments.map((d) => d.name),
+      members: [],
+      onboardingCompleted: r.workspace.onboardingCompleted,
+      createdAtMs: r.workspace.createdAtMs,
+      updatedAtMs: r.workspace.updatedAtMs,
+    }));
+  }, []);
+
+  const clearWorkspaceData = useCallback(() => {
+    setWorkflows([]);
+    setTasks([]);
+    setKnowledgeDocs([]);
+    setApprovals([]);
+    setIntegrations([]);
+    setAuditLogs([]);
+    setNotifications([]);
+    setTeamMembers([]);
+  }, []);
+
+  const hydrateWorkspaceData = useCallback(
+    (workspaceId: string, wsData: BackendWorkspaceDataResponse) => {
+      setWorkflows(wsData.workflows || []);
+      setTasks(wsData.tasks || []);
+      setKnowledgeDocs(wsData.documents || []);
+      setApprovals(wsData.approvals || []);
+      setIntegrations(wsData.integrations || []);
+      setAuditLogs(normalizeAuditLogs(wsData.auditLogs));
+      setNotifications(wsData.notifications || []);
+      setTeamMembers(mapBackendMembers(workspaceId, wsData.members));
     },
     []
   );
 
-  // Sync backend session (for email/password auth or OAuth)
-  const syncBackendSession = useCallback(async () => {
-    const token = getStoredSessionToken();
-    if (!token && !auth.currentUser) return;
-    try {
-      const me = await apiGetJson<{
-        user: { uid: string; email: string; emailVerified: boolean; displayName: string };
-        profile: UserProfile & { userId?: string; activeWorkspaceId?: string };
-        workspaces: {
-          workspace: { id: string; name: string; type: 'personal' | 'organization'; ownerId: string; onboardingCompleted: boolean; createdAtMs: number; updatedAtMs: number };
-          role: WorkspaceRole;
-          organization: { industry?: string; website?: string; country?: string; size?: string } | null;
-          departments: { name: string }[];
-        }[];
-        pendingInvitations: { id: string; workspaceName: string; roleId: WorkspaceRole; department: string; invitedByName: string }[];
-      }>('/api/auth/me');
+  const refreshWorkspaceData = useCallback(
+    async (workspaceId: string) => {
+      if (!workspaceId) return;
+      const wsData = await apiGetJson<BackendWorkspaceDataResponse>(
+        `/api/workspaces/${workspaceId}/data`
+      );
+      hydrateWorkspaceData(workspaceId, wsData);
+    },
+    [hydrateWorkspaceData]
+  );
 
-      if (!auth.currentUser) {
-        // Synthetic Firebase-compatible user object for backend-authenticated session
-        setUser({
+  // Sync backend session (for email/password auth or Google OAuth)
+  const syncBackendSession = useCallback(async () => {
+    if (syncInFlightRef.current) {
+      return syncInFlightRef.current;
+    }
+
+    const run = async () => {
+      const token = getStoredSessionToken();
+      if (!token && !auth.currentUser) {
+        setAuthReady(true);
+        return;
+      }
+
+      setSeeding(true);
+      try {
+        const me = await apiGetJson<{
+          user: { uid: string; email: string; emailVerified: boolean; displayName: string };
+          profile: UserProfile & { userId?: string; activeWorkspaceId?: string };
+          workspaces: BackendWorkspaceSummary[];
+          pendingInvitations: {
+            id: string;
+            workspaceName: string;
+            roleId: WorkspaceRole;
+            department: string;
+            invitedByName: string;
+          }[];
+        }>('/api/auth/me');
+
+        if (!auth.currentUser) {
+          setUser({
+            uid: me.user.uid,
+            email: me.user.email,
+            emailVerified: me.user.emailVerified,
+            displayName: me.user.displayName,
+            photoURL: null,
+          } as unknown as User);
+        }
+
+        const mapped = mapBackendWorkspaces(me.workspaces || []);
+        const targetWs =
+          mapped.find((w) => w.id === me.profile.activeWorkspaceId) || mapped[0] || null;
+
+        setProfile({
+          ...me.profile,
           uid: me.user.uid,
           email: me.user.email,
-          emailVerified: me.user.emailVerified,
-          displayName: me.user.displayName,
-          photoURL: null,
-        } as unknown as User);
-      }
-      setProfile({
-        ...me.profile,
-        uid: me.user.uid,
-        email: me.user.email,
-        role: me.workspaces[0]?.role || 'Owner',
-        department: 'Operations',
-        organizationName: me.workspaces[0]?.workspace.name || 'Personal Workspace',
-      });
-      setWelcomeSeen(Boolean(me.profile.welcomeSeen));
-      setTutorialCompleted(Boolean(me.profile.tutorialCompleted));
-      setTutorialStep(Number(me.profile.tutorialStep || 1));
-      setPendingInvitations(me.pendingInvitations || []);
-      if (me.workspaces && me.workspaces.length > 0) {
-        setNeedsWorkspaceSetup(false);
-        const mapped = mapBackendWorkspaces(me.workspaces);
-        setWorkspaces(mapped);
-        const targetId =
-          me.profile.activeWorkspaceId && mapped.some((w) => w.id === me.profile.activeWorkspaceId)
-            ? me.profile.activeWorkspaceId
-            : mapped[0].id;
-        setActiveWorkspaceIdState(targetId);
-        setActiveWorkspaceId(me.user.uid, targetId);
-        try {
-          const wsData = await apiGetJson<{
-            workflows: Workflow[];
-            tasks: TaskItem[];
-            documents: KnowledgeDoc[];
-            approvals: ApprovalItem[];
-            integrations: IntegrationItem[];
-            auditLogs: AuditLogItem[];
-            notifications: NotificationItem[];
-            members: { id: string; userId: string; name: string; roleId: WorkspaceRole; department: string; status: 'active' | 'suspended' }[];
-          }>(`/api/workspaces/${targetId}/data`);
-          setWorkflows(wsData.workflows || []);
-          setTasks(wsData.tasks || []);
-          setKnowledgeDocs(wsData.documents || []);
-          setApprovals(wsData.approvals || []);
-          setIntegrations(wsData.integrations || []);
-          setAuditLogs(wsData.auditLogs || []);
-          setNotifications(wsData.notifications || []);
-          setTeamMembers(
-            (wsData.members || []).map((m) => ({
-              id: m.id,
-              ownerId: m.userId,
-              workspaceId: targetId,
-              name: m.name,
-              role: m.roleId,
-              department: m.department,
-              status: m.status === 'active' ? 'active' : 'invited',
-              createdAtMs: Date.now(),
-              updatedAtMs: Date.now(),
-            }))
-          );
-        } catch {
-          // Non-blocking
+          role: targetWs?.role || 'Owner',
+          department: me.profile.department || 'Operations',
+          organizationName: targetWs?.name || 'Personal Workspace',
+        });
+        setWelcomeSeen(Boolean(me.profile.welcomeSeen));
+        setTutorialCompleted(Boolean(me.profile.tutorialCompleted));
+        setTutorialStep(Number(me.profile.tutorialStep || 1));
+        setPendingInvitations(me.pendingInvitations || []);
+
+        if (mapped.length > 0 && targetWs) {
+          setNeedsWorkspaceSetup(false);
+          setWorkspaces(mapped);
+          saveUserWorkspaces(me.user.uid, mapped);
+          setActiveWorkspaceIdState(targetWs.id);
+          setActiveWorkspaceId(me.user.uid, targetWs.id);
+          try {
+            await refreshWorkspaceData(targetWs.id);
+          } catch (err) {
+            console.error('Failed to load workspace data:', err);
+          }
+        } else {
+          setWorkspaces([]);
+          setActiveWorkspaceIdState('');
+          clearWorkspaceData();
+          setNeedsWorkspaceSetup(true);
         }
+      } catch (err) {
+        console.error('Session sync failed:', err);
+        if (!auth.currentUser) {
+          setStoredSessionToken(null);
+          setUser(null);
+          setProfile(null);
+          setWorkspaces([]);
+          setActiveWorkspaceIdState('');
+          clearWorkspaceData();
+        }
+      } finally {
+        setSeeding(false);
+        setAuthReady(true);
+      }
+    };
+
+    syncInFlightRef.current = run().finally(() => {
+      syncInFlightRef.current = null;
+    });
+    return syncInFlightRef.current;
+  }, [mapBackendWorkspaces, refreshWorkspaceData, clearWorkspaceData]);
+
+  // Auth state lifecycle (handles both stored JWT and Firebase Auth cleanly with no flash)
+  useEffect(() => {
+    let active = true;
+    const unsub = onAuthStateChanged(auth, async (nextUser) => {
+      if (!active) return;
+
+      if (getStoredSessionToken()) {
+        await syncBackendSession();
+        return;
+      }
+
+      if (nextUser) {
+        setUser(nextUser);
+        await syncBackendSession();
       } else {
+        setUser(null);
+        setProfile(null);
         setWorkspaces([]);
         setActiveWorkspaceIdState('');
-        setWorkflows([]);
-        setTasks([]);
-        setKnowledgeDocs([]);
-        setApprovals([]);
-        setIntegrations([]);
-        setAuditLogs([]);
-        setNotifications([]);
-        setTeamMembers([]);
-        setNeedsWorkspaceSetup(true);
+        setPendingInvitations([]);
+        setNeedsWorkspaceSetup(false);
+        setOnboardingNeeded(false);
+        clearWorkspaceData();
+        setAuthReady(true);
       }
-      setAuthReady(true);
-    } catch {
-      // Token expired or invalid
-      setStoredSessionToken(null);
-    }
-  }, [mapBackendWorkspaces]);
-
-  // Check backend session on mount
-  useEffect(() => {
-    if (getStoredSessionToken()) {
-      void syncBackendSession();
-    }
-  }, [syncBackendSession]);
-
-  // Sync workspaces whenever user changes (with local fallback)
-  useEffect(() => {
-    if (!user) {
-      setWorkspaces([]);
-      setActiveWorkspaceIdState('');
-      return;
-    }
-    if (workspaces.length === 0) {
-      const list = loadUserWorkspaces(user.uid, profile?.displayName || user.displayName || 'Operations Lead');
-      setWorkspaces(list);
-      const savedActiveId = getActiveWorkspaceId(user.uid);
-      const found = list.find((w) => w.id === savedActiveId);
-      setActiveWorkspaceIdState(found ? found.id : list[0].id);
-    }
-  }, [user, profile?.displayName, workspaces.length]);
+    });
+    return () => {
+      active = false;
+      unsub();
+    };
+  }, [syncBackendSession, clearWorkspaceData]);
 
   const activeWorkspace = useMemo(() => {
     return workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0] || null;
   }, [workspaces, activeWorkspaceId]);
 
   const switchWorkspace = useCallback(
-    async (id: string) => {
+    async (id: string, workspaceListOverride?: Workspace[]) => {
       if (!user) return;
       setActiveWorkspaceIdState(id);
       setActiveWorkspaceId(user.uid, id);
+      const list = workspaceListOverride || workspaces;
+      const targetWs = list.find((w) => w.id === id);
+      if (targetWs) {
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                role: targetWs.role,
+                organizationName: targetWs.name,
+              }
+            : prev
+        );
+      }
       try {
-        const switched = await apiPostJson<{
-          workflows: Workflow[];
-          tasks: TaskItem[];
-          documents: KnowledgeDoc[];
-          approvals: ApprovalItem[];
-          integrations: IntegrationItem[];
-          auditLogs: AuditLogItem[];
-          notifications: NotificationItem[];
-          members: { id: string; userId: string; name: string; roleId: WorkspaceRole; department: string; status: 'active' | 'suspended' }[];
-        }>(`/api/workspaces/${id}/switch`, {});
-        if (getStoredSessionToken()) {
-          // Clear previous workspace data and load strictly authorized workspace data
-          setWorkflows(switched.workflows || []);
-          setTasks(switched.tasks || []);
-          setKnowledgeDocs(switched.documents || []);
-          setApprovals(switched.approvals || []);
-          setIntegrations(switched.integrations || []);
-          setAuditLogs(switched.auditLogs || []);
-          setNotifications(switched.notifications || []);
-          setTeamMembers(
-            (switched.members || []).map((m) => ({
-              id: m.id,
-              ownerId: m.userId,
-              workspaceId: id,
-              name: m.name,
-              role: m.roleId,
-              department: m.department,
-              status: m.status === 'active' ? 'active' : 'invited',
-              createdAtMs: Date.now(),
-              updatedAtMs: Date.now(),
-            }))
+        const switched = await apiPostJson<
+          BackendWorkspaceDataResponse & {
+            workspace?: { id: string; name: string };
+            role?: WorkspaceRole;
+          }
+        >(`/api/workspaces/${id}/switch`, {});
+        hydrateWorkspaceData(id, switched);
+        if (switched.role || switched.workspace) {
+          setProfile((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  role: switched.role || prev.role,
+                  organizationName: switched.workspace?.name || prev.organizationName,
+                }
+              : prev
           );
         }
-      } catch {
-        // Local workspace switch fallback
+      } catch (err) {
+        console.error('Workspace switch error:', err);
       }
     },
-    [user]
+    [user, workspaces, hydrateWorkspaceData]
   );
 
   const createOrganizationWorkspace = useCallback(
@@ -307,6 +370,7 @@ export function useFlowstateData() {
       if (!user) throw new Error('Must be signed in to create workspace');
       const res = await apiPostJson<{
         workspace: { id: string; name: string; createdAtMs: number; updatedAtMs: number };
+        workspaces: BackendWorkspaceSummary[];
       }>('/api/workspaces/organization', {
         organizationName: orgData.name || 'New Organization',
         logoUrl: orgData.logoUrl || '',
@@ -314,34 +378,56 @@ export function useFlowstateData() {
         website: orgData.website || '',
         country: orgData.country || 'United States',
         size: orgData.size || '1-10',
-        departments: orgData.departments || ['Customer Support', 'IT Operations', 'Billing & Finance'],
+        departments: orgData.departments || [],
         onboardingCompleted: true,
       });
 
-      const newWs: Workspace = {
-        id: res.workspace.id,
-        name: res.workspace.name,
-        type: 'organization',
-        ownerId: user.uid,
-        role: 'Owner',
-        logoUrl: orgData.logoUrl || '',
-        industry: orgData.industry || 'Technology',
-        website: orgData.website || '',
-        country: orgData.country || 'United States',
-        size: orgData.size || '1-10',
-        departments: orgData.departments || ['Customer Support', 'IT Operations', 'Billing & Finance'],
-        members: [],
-        onboardingCompleted: true,
-        createdAtMs: res.workspace.createdAtMs,
-        updatedAtMs: res.workspace.updatedAtMs,
-      };
-      const nextList = [...workspaces, newWs];
-      setWorkspaces(nextList);
-      saveUserWorkspaces(user.uid, nextList);
-      await switchWorkspace(newWs.id);
-      return newWs;
+      const mapped = mapBackendWorkspaces(res.workspaces || []);
+      setWorkspaces(mapped);
+      saveUserWorkspaces(user.uid, mapped);
+      setNeedsWorkspaceSetup(false);
+      await switchWorkspace(res.workspace.id, mapped);
+      return mapped.find((w) => w.id === res.workspace.id) || mapped[mapped.length - 1];
     },
-    [user, workspaces, switchWorkspace]
+    [user, mapBackendWorkspaces, switchWorkspace]
+  );
+
+  const updateWorkspaceDetails = useCallback(
+    async (patch: {
+      name?: string;
+      logoUrl?: string;
+      industry?: string;
+      website?: string;
+      country?: string;
+      size?: string;
+    }) => {
+      if (!user || !activeWorkspace) return;
+      await apiPatchJson(`/api/workspaces/${activeWorkspace.id}`, patch);
+      setWorkspaces((prev) => {
+        const next = prev.map((w) =>
+          w.id === activeWorkspace.id
+            ? {
+                ...w,
+                name: patch.name?.trim() || w.name,
+                logoUrl: patch.logoUrl !== undefined ? patch.logoUrl : w.logoUrl,
+                industry: patch.industry !== undefined ? patch.industry : w.industry,
+                website: patch.website !== undefined ? patch.website : w.website,
+                country: patch.country !== undefined ? patch.country : w.country,
+                size: patch.size !== undefined ? patch.size : w.size,
+                updatedAtMs: Date.now(),
+              }
+            : w
+        );
+        saveUserWorkspaces(user.uid, next);
+        return next;
+      });
+      if (patch.name?.trim()) {
+        setProfile((prev) =>
+          prev ? { ...prev, organizationName: patch.name!.trim() } : prev
+        );
+      }
+    },
+    [user, activeWorkspace]
   );
 
   const createDepartment = useCallback(
@@ -380,15 +466,20 @@ export function useFlowstateData() {
   const respondToInvitation = useCallback(
     async (invitationId: string, action: 'accept' | 'reject') => {
       const res = await apiPostJson<{
-        workspaces: Parameters<typeof mapBackendWorkspaces>[0];
+        workspaces: BackendWorkspaceSummary[];
         pendingInvitations: typeof pendingInvitations;
       }>(`/api/invitations/${invitationId}/respond`, { action });
       setPendingInvitations(res.pendingInvitations || []);
       if (res.workspaces) {
-        setWorkspaces(mapBackendWorkspaces(res.workspaces));
+        const mapped = mapBackendWorkspaces(res.workspaces);
+        setWorkspaces(mapped);
+        if (action === 'accept' && mapped.length > 0 && (!activeWorkspaceId || needsWorkspaceSetup)) {
+          setNeedsWorkspaceSetup(false);
+          await switchWorkspace(mapped[mapped.length - 1].id, mapped);
+        }
       }
     },
-    [mapBackendWorkspaces]
+    [mapBackendWorkspaces, activeWorkspaceId, needsWorkspaceSetup, switchWorkspace]
   );
 
   const startOnboarding = useCallback((type: 'personal' | 'organization') => {
@@ -404,35 +495,35 @@ export function useFlowstateData() {
     async (onboardingData: PersonalOnboardingData) => {
       if (!user) return;
       savePersonalOnboarding(user.uid, onboardingData);
-      try {
-        await apiPatchJson('/api/profile', {
-          displayName: onboardingData.fullName,
-          jobTitle: onboardingData.jobTitle,
-          professionalBackground: onboardingData.professionalBackground,
-          profession: onboardingData.profession,
-          responsibilities: onboardingData.responsibilities,
-          typeOfWork: onboardingData.typeOfWork,
-          automationGoals: onboardingData.automationGoals,
-          existingTools: onboardingData.existingTools,
-          interactionPreference: onboardingData.interactionPreference,
-          voiceLanguage: onboardingData.languagePreference,
-          personalOnboardingCompleted: true,
-        });
-        const wsRes = await apiPostJson<{
-          workspace: { id: string };
-          workspaces: Parameters<typeof mapBackendWorkspaces>[0];
-        }>('/api/workspaces/personal', {
-          name: `${onboardingData.fullName || 'Personal'}'s Workspace`,
-          onboardingCompleted: true,
-        });
-        const mapped = mapBackendWorkspaces(wsRes.workspaces);
-        setWorkspaces(mapped);
-        await switchWorkspace(wsRes.workspace.id);
-      } catch {
-        // Fallback if backend unreachable
+      const profileRes = await apiPatchJson<{ profile: UserProfile }>('/api/profile', {
+        displayName: onboardingData.fullName || user.displayName || 'Operations Lead',
+        jobTitle: onboardingData.jobTitle,
+        professionalBackground: onboardingData.professionalBackground,
+        profession: onboardingData.profession,
+        responsibilities: onboardingData.responsibilities,
+        typeOfWork: onboardingData.typeOfWork,
+        automationGoals: onboardingData.automationGoals,
+        existingTools: onboardingData.existingTools,
+        interactionPreference: onboardingData.interactionPreference,
+        voiceLanguage: onboardingData.languagePreference,
+        personalOnboardingCompleted: true,
+      });
+      if (profileRes.profile) {
+        setProfile((prev) => (prev ? { ...prev, ...profileRes.profile } : profileRes.profile));
       }
+      const wsRes = await apiPostJson<{
+        workspace: { id: string };
+        workspaces: BackendWorkspaceSummary[];
+      }>('/api/workspaces/personal', {
+        name: `${onboardingData.fullName?.trim() || 'Personal'}'s Workspace`,
+        onboardingCompleted: true,
+      });
+      const mapped = mapBackendWorkspaces(wsRes.workspaces || []);
+      setWorkspaces(mapped);
+      saveUserWorkspaces(user.uid, mapped);
       setNeedsWorkspaceSetup(false);
       setOnboardingNeeded(false);
+      await switchWorkspace(wsRes.workspace.id, mapped);
     },
     [user, mapBackendWorkspaces, switchWorkspace]
   );
@@ -441,307 +532,33 @@ export function useFlowstateData() {
     async (onboardingData: OrganizationOnboardingData) => {
       if (!user) return;
       saveOrgOnboarding(user.uid, onboardingData);
-      try {
-        const res = await apiPostJson<{
-          workspace: { id: string };
-          workspaces: Parameters<typeof mapBackendWorkspaces>[0];
-        }>('/api/workspaces/organization', {
-          organizationName: onboardingData.organizationName,
-          logoUrl: onboardingData.logoUrl || '',
-          industry: onboardingData.industry,
-          website: onboardingData.website,
-          country: onboardingData.country,
-          size: onboardingData.organizationSize,
-          ownerRoleTitle: onboardingData.ownerRole,
-          departments: onboardingData.departments,
-          businessProcesses: onboardingData.businessProcesses,
-          automationRequirements: onboardingData.automationRequirements,
-          existingTools: onboardingData.existingSoftwareTools,
-          teamInvitations: onboardingData.teamInvitations,
-          onboardingCompleted: true,
-        });
-        const mapped = mapBackendWorkspaces(res.workspaces);
-        setWorkspaces(mapped);
-        await switchWorkspace(res.workspace.id);
-      } catch {
-        // Fallback
-      }
+      const res = await apiPostJson<{
+        workspace: { id: string };
+        workspaces: BackendWorkspaceSummary[];
+      }>('/api/workspaces/organization', {
+        organizationName: onboardingData.organizationName?.trim() || 'Organization Workspace',
+        logoUrl: onboardingData.logoUrl || '',
+        industry: onboardingData.industry,
+        website: onboardingData.website,
+        country: onboardingData.country,
+        size: onboardingData.organizationSize,
+        ownerRoleTitle: onboardingData.ownerRole,
+        departments: onboardingData.departments,
+        businessProcesses: onboardingData.businessProcesses,
+        automationRequirements: onboardingData.automationRequirements,
+        existingTools: onboardingData.existingSoftwareTools,
+        teamInvitations: onboardingData.teamInvitations,
+        onboardingCompleted: true,
+      });
+      const mapped = mapBackendWorkspaces(res.workspaces || []);
+      setWorkspaces(mapped);
+      saveUserWorkspaces(user.uid, mapped);
       setNeedsWorkspaceSetup(false);
       setOnboardingNeeded(false);
+      await switchWorkspace(res.workspace.id, mapped);
     },
     [user, mapBackendWorkspaces, switchWorkspace]
   );
-
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (nextUser) => {
-      if (getStoredSessionToken()) {
-        // Backend email/password session active
-        setAuthReady(true);
-        return;
-      }
-      setUser(nextUser);
-      setAuthReady(true);
-      if (nextUser) {
-        const existingLocal = loadUserWorkspaces(nextUser.uid);
-        if (existingLocal.length === 0) {
-          setNeedsWorkspaceSetup(true);
-          setWorkspaces([]);
-          setWorkflows([]);
-          setTasks([]);
-          setKnowledgeDocs([]);
-          setApprovals([]);
-          setIntegrations([]);
-          setAuditLogs([]);
-        }
-        setSeeding(true);
-        try {
-          await syncBackendSession();
-        } catch (err) {
-          console.error('Session sync error:', err);
-        } finally {
-          setSeeding(false);
-        }
-      } else {
-        setProfile(null);
-        setWorkflows([]);
-        setTasks([]);
-        setKnowledgeDocs([]);
-        setApprovals([]);
-        setIntegrations([]);
-        setAuditLogs([]);
-        setTeamMembers([]);
-        setNotifications([]);
-      }
-    });
-    return () => unsub();
-  }, [syncBackendSession]);
-
-  useEffect(() => {
-    if (!authReady || !user || !auth.currentUser || getStoredSessionToken() || needsWorkspaceSetup || workspaces.length === 0) return;
-    const uid = user.uid;
-
-    const unsubProfile = onSnapshot(
-      doc(db, 'users', uid),
-      (snap) => {
-        if (snap.exists()) {
-          setProfile(snap.data() as UserProfile);
-        }
-      },
-      (err) => handleFirestoreError(err, OperationType.GET, `users/${uid}`)
-    );
-
-    const unsubWorkflows = onSnapshot(
-      query(collection(db, 'workflows'), where('ownerId', '==', uid)),
-      (snap) => {
-        const list: Workflow[] = snap.docs
-          .map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              ownerId: data.ownerId,
-              code: data.code,
-              title: data.title,
-              description: data.description,
-              category: data.category,
-              status: data.status,
-              priority: data.priority,
-              recommendedTeam: data.recommendedTeam,
-              triggerType: data.triggerType,
-              sourcePrompt: data.sourcePrompt || '',
-              troubleshootingSummary: data.troubleshootingSummary || '',
-              durationMs: Number(data.durationMs || 0),
-              steps: Array.isArray(data.steps) ? data.steps : [],
-              ragSources: Array.isArray(data.ragSources) ? data.ragSources : [],
-              dueDate: data.dueDate || '',
-              createdAtMs: tsToMs(data.createdAt),
-              updatedAtMs: tsToMs(data.updatedAt),
-            };
-          })
-          .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
-        setWorkflows(list);
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'workflows')
-    );
-
-    const unsubTasks = onSnapshot(
-      query(collection(db, 'tasks'), where('ownerId', '==', uid)),
-      (snap) => {
-        const list: TaskItem[] = snap.docs
-          .map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              ownerId: data.ownerId,
-              workflowId: data.workflowId,
-              code: data.code,
-              title: data.title,
-              description: data.description,
-              assignee: data.assignee,
-              department: data.department,
-              priority: data.priority,
-              status: data.status,
-              dueDate: data.dueDate,
-              dependencies: Array.isArray(data.dependencies) ? data.dependencies : [],
-              comments: Array.isArray(data.comments) ? data.comments : [],
-              integrationAction: data.integrationAction || '',
-              requiresApproval: Boolean(data.requiresApproval),
-              createdAtMs: tsToMs(data.createdAt),
-              updatedAtMs: tsToMs(data.updatedAt),
-            };
-          })
-          .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
-        setTasks(list);
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'tasks')
-    );
-
-    const unsubDocs = onSnapshot(
-      query(collection(db, 'knowledgeDocs'), where('ownerId', '==', uid)),
-      (snap) => {
-        const list: KnowledgeDoc[] = snap.docs
-          .map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              ownerId: data.ownerId,
-              title: data.title,
-              fileName: data.fileName,
-              fileType: data.fileType,
-              category: data.category,
-              content: data.content,
-              summary: data.summary,
-              tags: Array.isArray(data.tags) ? data.tags : [],
-              wordCount: Number(data.wordCount || 0),
-              createdAtMs: tsToMs(data.createdAt),
-              updatedAtMs: tsToMs(data.updatedAt),
-            };
-          })
-          .sort((a, b) => b.createdAtMs - a.createdAtMs);
-        setKnowledgeDocs(list);
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'knowledgeDocs')
-    );
-
-    const unsubApprovals = onSnapshot(
-      query(collection(db, 'approvals'), where('ownerId', '==', uid)),
-      (snap) => {
-        const list: ApprovalItem[] = snap.docs
-          .map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              ownerId: data.ownerId,
-              workflowId: data.workflowId,
-              workflowTitle: data.workflowTitle,
-              actionType: data.actionType,
-              integrationTarget: data.integrationTarget,
-              isSimulated: Boolean(data.isSimulated),
-              riskLevel: data.riskLevel,
-              reason: data.reason,
-              proposedPayload: data.proposedPayload,
-              requestedBy: data.requestedBy,
-              status: data.status,
-              reviewerNote: data.reviewerNote || '',
-              reviewedBy: data.reviewedBy || '',
-              createdAtMs: tsToMs(data.createdAt),
-              updatedAtMs: tsToMs(data.updatedAt),
-            };
-          })
-          .sort((a, b) => b.createdAtMs - a.createdAtMs);
-        setApprovals(list);
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'approvals')
-    );
-
-    const unsubIntegrations = onSnapshot(
-      query(collection(db, 'integrations'), where('ownerId', '==', uid)),
-      (snap) => {
-        const list: IntegrationItem[] = snap.docs
-          .map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              ownerId: data.ownerId,
-              key: data.key,
-              name: data.name,
-              category: data.category,
-              provider: data.provider,
-              status: data.status,
-              isSimulated: Boolean(data.isSimulated),
-              endpointUrl: data.endpointUrl || '',
-              description: data.description,
-              lastSyncAt: data.lastSyncAt || '',
-              executionsCount: Number(data.executionsCount || 0),
-              createdAtMs: tsToMs(data.createdAt),
-              updatedAtMs: tsToMs(data.updatedAt),
-            };
-          })
-          .sort((a, b) => a.name.localeCompare(b.name));
-        setIntegrations(list);
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'integrations')
-    );
-
-    const unsubAuditLogs = onSnapshot(
-      query(collection(db, 'auditLogs'), where('ownerId', '==', uid)),
-      (snap) => {
-        const list: AuditLogItem[] = snap.docs
-          .map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              ownerId: data.ownerId,
-              workflowId: data.workflowId,
-              workflowTitle: data.workflowTitle,
-              eventType: data.eventType,
-              actor: data.actor,
-              summary: data.summary,
-              status: data.status,
-              isSimulated: Boolean(data.isSimulated),
-              durationMs: Number(data.durationMs || 0),
-              createdAtMs: tsToMs(data.createdAt),
-            };
-          })
-          .sort((a, b) => b.createdAtMs - a.createdAtMs);
-        setAuditLogs(list);
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'auditLogs')
-    );
-
-    const unsubTeam = onSnapshot(
-      query(collection(db, 'teamMembers'), where('ownerId', '==', uid)),
-      (snap) => {
-        const list: TeamMember[] = snap.docs
-          .map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              ownerId: data.ownerId,
-              name: data.name,
-              role: data.role,
-              department: data.department,
-              status: data.status,
-              createdAtMs: tsToMs(data.createdAt),
-              updatedAtMs: tsToMs(data.updatedAt),
-            };
-          })
-          .sort((a, b) => a.name.localeCompare(b.name));
-        setTeamMembers(list);
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'teamMembers')
-    );
-
-    return () => {
-      unsubProfile();
-      unsubWorkflows();
-      unsubTasks();
-      unsubDocs();
-      unsubApprovals();
-      unsubIntegrations();
-      unsubAuditLogs();
-      unsubTeam();
-    };
-  }, [authReady, user]);
 
   // --- Auth Actions ---
   const signInWithGoogle = useCallback(async () => {
@@ -749,7 +566,9 @@ export function useFlowstateData() {
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Sign-in failed.');
+      const msg = err instanceof Error ? err.message : 'Google sign-in failed.';
+      setAuthError(msg);
+      throw err;
     }
   }, []);
 
@@ -758,163 +577,81 @@ export function useFlowstateData() {
     setUser(null);
     setProfile(null);
     setWorkspaces([]);
+    setActiveWorkspaceIdState('');
     setPendingInvitations([]);
-    await signOut(auth).catch(() => {});
-  }, []);
+    setNeedsWorkspaceSetup(false);
+    setOnboardingNeeded(false);
+    clearWorkspaceData();
+    try {
+      await signOut(auth);
+    } catch {
+      // Ignore if backend-only session
+    }
+  }, [clearWorkspaceData]);
 
-  // --- Audit Helper ---
+  // --- Helper: Append Audit Log ---
   const appendAuditLog = useCallback(
     async (entry: {
       workflowId: string;
       workflowTitle: string;
       eventType: string;
-      actor?: string;
       summary: string;
       status: 'success' | 'pending' | 'failed' | 'warning';
       isSimulated?: boolean;
       durationMs?: number;
+      actor?: string;
     }) => {
-      if (!user) return;
-      const logId = makeId('log');
+      if (!user || !activeWorkspace) return;
       try {
-        await setDoc(doc(db, 'auditLogs', logId), {
-          ownerId: user.uid,
-          workflowId: entry.workflowId.slice(0, 128),
-          workflowTitle: entry.workflowTitle.slice(0, 200),
-          eventType: entry.eventType.slice(0, 80),
-          actor: (entry.actor || profile?.displayName || user.displayName || 'User').slice(0, 120),
-          summary: entry.summary.slice(0, 1000),
-          status: entry.status,
-          isSimulated: Boolean(entry.isSimulated),
-          durationMs: Math.max(0, Math.min(86400000, Math.round(entry.durationMs ?? 240))),
-          createdAt: serverTimestamp(),
-        });
+        const created = await apiPostJson<AuditLogItem>(
+          `/api/workspaces/${activeWorkspace.id}/audit-logs`,
+          {
+            ...entry,
+            actor: entry.actor || profile?.displayName || user.displayName || 'Operations Lead',
+          }
+        );
+        setAuditLogs((prev) => [
+          { ...created, actor: created.actor || entry.actor || profile?.displayName || 'System' },
+          ...prev,
+        ]);
       } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `auditLogs/${logId}`);
+        console.error('Failed to record audit log:', err);
       }
     },
-    [user, profile]
+    [user, activeWorkspace, profile]
   );
 
-  // --- Workflow Creation from AI Draft (Atomic Batch: Workflow + Tasks + Approval + Audit Log) ---
+  // --- Create Workflow + Tasks + Optional Approval from AI Proposal ---
   const createWorkflowFromDraft = useCallback(
     async (
       draft: ProposedWorkflowDraft,
       opts: {
         sourcePrompt: string;
-        triggerType: TriggerType;
+        triggerType: 'voice' | 'chat';
         ragSources: string[];
         submitForApproval: boolean;
       }
     ): Promise<{ workflowId: string; approvalId?: string }> => {
-      if (!user) throw new Error('Not authenticated');
-      const startedAt = Date.now();
-      const wfId = makeId('wf');
-      const codeNum = 100 + workflows.length + 1;
-      const wfCode = `FLW-${codeNum}`;
-      const needsApproval = Boolean(opts.submitForApproval && draft.approvalRequest);
-      const initialStatus: WorkflowStatus = needsApproval ? 'awaiting_approval' : 'in_progress';
-
-      const batch = writeBatch(db);
-      const cleanSteps = (draft.steps || []).slice(0, 25).map((s) => String(s).slice(0, 480));
-      const cleanRagSources = (opts.ragSources || [])
-        .slice(0, 10)
-        .map((s) => String(s).slice(0, 480));
-
-      batch.set(doc(db, 'workflows', wfId), {
-        ownerId: user.uid,
-        code: wfCode,
-        title: draft.title.slice(0, 200),
-        description: draft.description.slice(0, 4000),
-        category: draft.category.slice(0, 80),
-        status: initialStatus,
-        priority: draft.priority,
-        recommendedTeam: draft.recommendedTeam.slice(0, 120),
+      if (!user || !activeWorkspace) throw new Error('No active workspace selected.');
+      const result = await apiPostJson<{
+        workflow: Workflow;
+        tasks: TaskItem[];
+        approval: ApprovalItem | null;
+      }>(`/api/workspaces/${activeWorkspace.id}/workflows/from-draft`, {
+        draft,
+        sourcePrompt: opts.sourcePrompt,
         triggerType: opts.triggerType,
-        sourcePrompt: opts.sourcePrompt.slice(0, 2000),
-        troubleshootingSummary: (draft.troubleshootingSummary || '').slice(0, 5000),
-        durationMs: Math.max(320, Date.now() - startedAt + 420),
-        steps: cleanSteps,
-        ragSources: cleanRagSources,
-        dueDate: (draft.dueDate || new Date(Date.now() + 86400000).toISOString().slice(0, 10)).slice(
-          0,
-          40
-        ),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        ragSources: opts.ragSources,
+        requireApproval: opts.submitForApproval,
       });
 
-      const taskList = (draft.tasks || []).slice(0, 12);
-      taskList.forEach((t, idx) => {
-        const tId = makeId(`tsk${idx}`);
-        const tCode = `TSK-${200 + tasks.length + idx + 1}`;
-        batch.set(doc(db, 'tasks', tId), {
-          ownerId: user.uid,
-          workflowId: wfId,
-          code: tCode,
-          title: t.title.slice(0, 200),
-          description: t.description.slice(0, 4000),
-          assignee: (t.assignee || draft.recommendedTeam || 'Unassigned').slice(0, 120),
-          department: (t.department || draft.category || 'Operations').slice(0, 80),
-          priority: t.priority || draft.priority,
-          status: needsApproval && t.requiresApproval ? 'blocked' : idx === 0 ? 'in_progress' : 'todo',
-          dueDate: (t.dueDate || draft.dueDate || new Date().toISOString().slice(0, 10)).slice(0, 40),
-          dependencies: (t.dependencies || []).slice(0, 10).map((d) => String(d).slice(0, 480)),
-          comments: [],
-          integrationAction: (t.integrationAction || '').slice(0, 200),
-          requiresApproval: Boolean(t.requiresApproval),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      });
-
-      let approvalId: string | undefined;
-      if (needsApproval && draft.approvalRequest) {
-        approvalId = makeId('apr');
-        batch.set(doc(db, 'approvals', approvalId), {
-          ownerId: user.uid,
-          workflowId: wfId,
-          workflowTitle: draft.title.slice(0, 200),
-          actionType: draft.approvalRequest.actionType.slice(0, 100),
-          integrationTarget: `${draft.approvalRequest.integrationTarget} [SIMULATED]`.slice(0, 100),
-          isSimulated: true,
-          riskLevel: draft.approvalRequest.riskLevel || 'medium',
-          reason: draft.approvalRequest.reason.slice(0, 1000),
-          proposedPayload: draft.approvalRequest.proposedPayload.slice(0, 4000),
-          requestedBy: (profile?.displayName || user.displayName || 'User').slice(0, 120),
-          status: 'pending',
-          reviewerNote: '',
-          reviewedBy: '',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
-
-      const logId = makeId('log');
-      batch.set(doc(db, 'auditLogs', logId), {
-        ownerId: user.uid,
-        workflowId: wfId,
-        workflowTitle: draft.title.slice(0, 200),
-        eventType: needsApproval ? 'workflow_queued_approval' : 'workflow_created',
-        actor: (profile?.displayName || user.displayName || 'User').slice(0, 120),
-        summary: needsApproval
-          ? `Generated workflow ${wfCode} (${taskList.length} tasks) via ${opts.triggerType}. Queued for human approval before external action.`
-          : `Generated and started workflow ${wfCode} (${taskList.length} tasks) via ${opts.triggerType}.`,
-        status: needsApproval ? 'pending' : 'success',
-        isSimulated: false,
-        durationMs: Math.max(300, Date.now() - startedAt + 350),
-        createdAt: serverTimestamp(),
-      });
-
-      try {
-        await batch.commit();
-      } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `workflows/${wfId}`);
-      }
-
-      return { workflowId: wfId, approvalId };
+      await refreshWorkspaceData(activeWorkspace.id);
+      return {
+        workflowId: result.workflow.id,
+        approvalId: result.approval ? result.approval.id : undefined,
+      };
     },
-    [user, workflows.length, tasks.length, profile]
+    [user, activeWorkspace, refreshWorkspaceData]
   );
 
   // --- Manual Workflow Creation ---
@@ -928,109 +665,68 @@ export function useFlowstateData() {
       dueDate: string;
       steps: string[];
     }) => {
-      if (!user) throw new Error('Not authenticated');
-      if (getStoredSessionToken() && activeWorkspace) {
-        const created = await apiPostJson<Workflow>(
-          `/api/workspaces/${activeWorkspace.id}/workflows`,
-          { ...input, status: 'draft', triggerType: 'manual' }
-        );
-        setWorkflows((prev) => [created, ...prev]);
-        return created.id;
-      }
-      const wfId = makeId('wf');
-      const wfCode = `FLW-${100 + workflows.length + 1}`;
-      try {
-        await setDoc(doc(db, 'workflows', wfId), {
-          ownerId: user.uid,
-          code: wfCode,
-          title: input.title.slice(0, 200),
-          description: input.description.slice(0, 4000),
-          category: input.category.slice(0, 80),
-          status: 'draft',
-          priority: input.priority,
-          recommendedTeam: input.recommendedTeam.slice(0, 120),
-          triggerType: 'manual',
-          sourcePrompt: '',
-          troubleshootingSummary: '',
-          durationMs: 220,
-          steps: input.steps.slice(0, 25).map((s) => s.slice(0, 480)),
-          ragSources: [],
-          dueDate: input.dueDate.slice(0, 40),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        await appendAuditLog({
-          workflowId: wfId,
-          workflowTitle: input.title,
-          eventType: 'workflow_created_manual',
-          summary: `Created manual workflow ${wfCode} in ${input.category}.`,
-          status: 'success',
-          durationMs: 220,
-        });
-        return wfId;
-      } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `workflows/${wfId}`);
-      }
+      if (!user || !activeWorkspace) throw new Error('No active workspace selected.');
+      const created = await apiPostJson<Workflow>(
+        `/api/workspaces/${activeWorkspace.id}/workflows`,
+        { ...input, status: 'draft', triggerType: 'manual' }
+      );
+      setWorkflows((prev) => [{ ...created, ownerId: created.ownerId || user.uid }, ...prev]);
+      await appendAuditLog({
+        workflowId: created.id,
+        workflowTitle: created.title,
+        eventType: 'workflow_created_manual',
+        summary: `Created manual workflow ${created.code} in ${input.category}.`,
+        status: 'success',
+        durationMs: 180,
+      });
+      return created.id;
     },
-    [user, workflows.length, appendAuditLog]
+    [user, activeWorkspace, appendAuditLog]
   );
 
   // --- Update Workflow Status / Fields ---
   const updateWorkflowStatus = useCallback(
     async (workflow: Workflow, nextStatus: WorkflowStatus, note?: string) => {
-      if (!user) return;
-      if (getStoredSessionToken() && activeWorkspace) {
-        const updated = await apiPatchJson<Workflow>(
-          `/api/workspaces/${activeWorkspace.id}/workflows/${workflow.id}`,
-          { status: nextStatus }
-        );
-        setWorkflows((prev) => prev.map((w) => (w.id === workflow.id ? updated : w)));
-        return;
-      }
-      try {
-        await updateDoc(doc(db, 'workflows', workflow.id), {
-          status: nextStatus,
-          durationMs: workflow.durationMs + 180,
-          updatedAt: serverTimestamp(),
-        });
-        await appendAuditLog({
-          workflowId: workflow.id,
-          workflowTitle: workflow.title,
-          eventType: `workflow_${nextStatus}`,
-          summary: note || `Workflow ${workflow.code} transitioned from ${workflow.status} to ${nextStatus}.`,
-          status: nextStatus === 'failed' ? 'failed' : nextStatus === 'blocked' ? 'warning' : 'success',
-          durationMs: 180,
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `workflows/${workflow.id}`);
-      }
+      if (!user || !activeWorkspace) return;
+      const updated = await apiPatchJson<Workflow>(
+        `/api/workspaces/${activeWorkspace.id}/workflows/${workflow.id}`,
+        { status: nextStatus, durationMs: (workflow.durationMs || 0) + 180 }
+      );
+      setWorkflows((prev) =>
+        prev.map((w) =>
+          w.id === workflow.id ? { ...updated, ownerId: updated.ownerId || w.ownerId } : w
+        )
+      );
+      await appendAuditLog({
+        workflowId: workflow.id,
+        workflowTitle: workflow.title,
+        eventType: `workflow_${nextStatus}`,
+        summary:
+          note || `Workflow ${workflow.code} transitioned from ${workflow.status} to ${nextStatus}.`,
+        status: nextStatus === 'failed' ? 'failed' : nextStatus === 'blocked' ? 'warning' : 'success',
+        durationMs: 180,
+      });
     },
-    [user, appendAuditLog]
+    [user, activeWorkspace, appendAuditLog]
   );
 
   const deleteWorkflow = useCallback(
     async (workflow: Workflow) => {
-      if (!user) return;
-      if (getStoredSessionToken() && activeWorkspace) {
-        await apiDeleteJson(`/api/workspaces/${activeWorkspace.id}/workflows/${workflow.id}`);
-        setWorkflows((prev) => prev.filter((w) => w.id !== workflow.id));
-        return;
-      }
-      try {
-        await deleteDoc(doc(db, 'workflows', workflow.id));
-        await appendAuditLog({
-          workflowId: workflow.id,
-          workflowTitle: workflow.title,
-          eventType: 'workflow_deleted',
-          summary: `Removed workflow ${workflow.code}.`,
-          status: 'warning',
-          durationMs: 120,
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `workflows/${workflow.id}`);
-      }
+      if (!user || !activeWorkspace) return;
+      await apiDeleteJson(`/api/workspaces/${activeWorkspace.id}/workflows/${workflow.id}`);
+      setWorkflows((prev) => prev.filter((w) => w.id !== workflow.id));
+      setTasks((prev) => prev.filter((t) => t.workflowId !== workflow.id));
+      setApprovals((prev) => prev.filter((a) => a.workflowId !== workflow.id));
+      await appendAuditLog({
+        workflowId: workflow.id,
+        workflowTitle: workflow.title,
+        eventType: 'workflow_deleted',
+        summary: `Removed workflow ${workflow.code}.`,
+        status: 'warning',
+        durationMs: 120,
+      });
     },
-    [user, appendAuditLog]
+    [user, activeWorkspace, appendAuditLog]
   );
 
   // --- Tasks CRUD ---
@@ -1048,87 +744,55 @@ export function useFlowstateData() {
       integrationAction?: string;
       requiresApproval?: boolean;
     }) => {
-      if (!user) throw new Error('Not authenticated');
-      if (getStoredSessionToken() && activeWorkspace) {
-        const created = await apiPostJson<TaskItem>(
-          `/api/workspaces/${activeWorkspace.id}/tasks`,
-          input
-        );
-        setTasks((prev) => [created, ...prev]);
-        return created.id;
-      }
-      const tId = makeId('tsk');
-      const code = `TSK-${200 + tasks.length + 1}`;
-      try {
-        await setDoc(doc(db, 'tasks', tId), {
-          ownerId: user.uid,
-          workflowId: input.workflowId,
-          code,
-          title: input.title.slice(0, 200),
-          description: input.description.slice(0, 4000),
-          assignee: input.assignee.slice(0, 120),
-          department: input.department.slice(0, 80),
-          priority: input.priority,
-          status: input.status,
-          dueDate: input.dueDate.slice(0, 40),
-          dependencies: input.dependencies.slice(0, 10).map((d) => d.slice(0, 480)),
-          comments: [],
-          integrationAction: (input.integrationAction || '').slice(0, 200),
-          requiresApproval: Boolean(input.requiresApproval),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        return tId;
-      } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `tasks/${tId}`);
-      }
+      if (!user || !activeWorkspace) throw new Error('No active workspace selected.');
+      const created = await apiPostJson<TaskItem>(
+        `/api/workspaces/${activeWorkspace.id}/tasks`,
+        input
+      );
+      setTasks((prev) => [{ ...created, ownerId: created.ownerId || user.uid }, ...prev]);
+      return created.id;
     },
-    [user, tasks.length]
+    [user, activeWorkspace]
   );
 
   const updateTaskStatus = useCallback(
     async (task: TaskItem, status: TaskStatus) => {
-      if (!user) return;
-      try {
-        await updateDoc(doc(db, 'tasks', task.id), {
-          status,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `tasks/${task.id}`);
-      }
+      if (!user || !activeWorkspace) return;
+      const updated = await apiPatchJson<TaskItem>(
+        `/api/workspaces/${activeWorkspace.id}/tasks/${task.id}`,
+        { status }
+      );
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...updated, ownerId: updated.ownerId || t.ownerId } : t))
+      );
     },
-    [user]
+    [user, activeWorkspace]
   );
 
   const addTaskComment = useCallback(
     async (task: TaskItem, commentText: string) => {
-      if (!user || !commentText.trim()) return;
+      if (!user || !activeWorkspace || !commentText.trim()) return;
       const author = profile?.displayName || user.displayName || 'User';
       const entry = `${author}: ${commentText.trim()}`.slice(0, 480);
-      const nextComments = [...task.comments, entry].slice(-30);
-      try {
-        await updateDoc(doc(db, 'tasks', task.id), {
-          comments: nextComments,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `tasks/${task.id}`);
-      }
+      const nextComments = [...(task.comments || []), entry].slice(-30);
+      const updated = await apiPatchJson<TaskItem>(
+        `/api/workspaces/${activeWorkspace.id}/tasks/${task.id}`,
+        { comments: nextComments }
+      );
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...updated, ownerId: updated.ownerId || t.ownerId } : t))
+      );
     },
-    [user, profile]
+    [user, activeWorkspace, profile]
   );
 
   const deleteTask = useCallback(
     async (taskId: string) => {
-      if (!user) return;
-      try {
-        await deleteDoc(doc(db, 'tasks', taskId));
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `tasks/${taskId}`);
-      }
+      if (!user || !activeWorkspace) return;
+      await apiDeleteJson(`/api/workspaces/${activeWorkspace.id}/tasks/${taskId}`);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
     },
-    [user]
+    [user, activeWorkspace]
   );
 
   // --- Knowledge Docs CRUD ---
@@ -1143,48 +807,32 @@ export function useFlowstateData() {
       tags: string[];
       wordCount: number;
     }) => {
-      if (!user) throw new Error('Not authenticated');
-      const docId = makeId('kb');
-      try {
-        await setDoc(doc(db, 'knowledgeDocs', docId), {
-          ownerId: user.uid,
-          title: input.title.slice(0, 200),
-          fileName: input.fileName.slice(0, 200),
-          fileType: input.fileType,
-          category: input.category.slice(0, 80),
-          content: input.content.slice(0, 75000),
-          summary: input.summary.slice(0, 950),
-          tags: input.tags.slice(0, 10).map((t) => t.slice(0, 60)),
-          wordCount: Math.max(0, Math.min(500000, Math.round(input.wordCount))),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        await appendAuditLog({
-          workflowId: 'knowledge-base',
-          workflowTitle: input.title,
-          eventType: 'knowledge_doc_uploaded',
-          summary: `Indexed "${input.fileName}" (${input.wordCount} words) into ${input.category} for RAG semantic retrieval.`,
-          status: 'success',
-          durationMs: 310,
-        });
-        return docId;
-      } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `knowledgeDocs/${docId}`);
-      }
+      if (!user || !activeWorkspace) throw new Error('No active workspace selected.');
+      const created = await apiPostJson<KnowledgeDoc>(
+        `/api/workspaces/${activeWorkspace.id}/documents`,
+        input
+      );
+      setKnowledgeDocs((prev) => [{ ...created, ownerId: created.ownerId || user.uid }, ...prev]);
+      await appendAuditLog({
+        workflowId: 'knowledge-base',
+        workflowTitle: input.title,
+        eventType: 'knowledge_doc_uploaded',
+        summary: `Indexed "${input.fileName}" (${input.wordCount} words) into ${input.category} for RAG semantic retrieval.`,
+        status: 'success',
+        durationMs: 310,
+      });
+      return created.id;
     },
-    [user, appendAuditLog]
+    [user, activeWorkspace, appendAuditLog]
   );
 
   const deleteKnowledgeDoc = useCallback(
     async (docId: string) => {
-      if (!user) return;
-      try {
-        await deleteDoc(doc(db, 'knowledgeDocs', docId));
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `knowledgeDocs/${docId}`);
-      }
+      if (!user || !activeWorkspace) return;
+      await apiDeleteJson(`/api/workspaces/${activeWorkspace.id}/documents/${docId}`);
+      setKnowledgeDocs((prev) => prev.filter((d) => d.id !== docId));
     },
-    [user]
+    [user, activeWorkspace]
   );
 
   // --- Approval Decision & Approved Action Execution ---
@@ -1194,129 +842,41 @@ export function useFlowstateData() {
       decision: 'approved' | 'rejected' | 'changes_requested',
       reviewerNote: string
     ) => {
-      if (!user) throw new Error('Not authenticated');
-      const reviewerName = (profile?.displayName || user.displayName || 'Approver').slice(0, 120);
+      if (!user || !activeWorkspace) throw new Error('No active workspace selected.');
+      await apiPostJson(`/api/workspaces/${activeWorkspace.id}/approvals/${approval.id}/resolve`, {
+        decision,
+        note: reviewerNote,
+      });
 
-      try {
-        await updateDoc(doc(db, 'approvals', approval.id), {
-          status: decision,
-          reviewerNote: reviewerNote.slice(0, 1000),
-          reviewedBy: reviewerName,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `approvals/${approval.id}`);
-      }
-
-      const parentWorkflow = workflows.find((w) => w.id === approval.workflowId);
+      let execResult: {
+        success: boolean;
+        isSimulated: boolean;
+        referenceId: string;
+        durationMs: number;
+        receipt: string;
+      } | null = null;
 
       if (decision === 'approved') {
-        // Execute the approved integration action via server endpoint (clearly marked simulated)
-        const execResult = await apiPostJson<{
+        execResult = await apiPostJson<{
           success: boolean;
           isSimulated: boolean;
           referenceId: string;
           durationMs: number;
           receipt: string;
         }>('/api/integrations/execute', {
+          workspaceId: activeWorkspace.id,
           integrationName: approval.integrationTarget,
           actionType: approval.actionType,
           payload: approval.proposedPayload,
           isSimulated: approval.isSimulated,
           approvalId: approval.id,
         });
-
-        // Update workflow to completed / in_progress & unblock related tasks
-        if (parentWorkflow && parentWorkflow.status !== 'completed') {
-          try {
-            await updateDoc(doc(db, 'workflows', parentWorkflow.id), {
-              status: 'completed',
-              durationMs: parentWorkflow.durationMs + execResult.durationMs,
-              updatedAt: serverTimestamp(),
-            });
-          } catch (err) {
-            handleFirestoreError(err, OperationType.UPDATE, `workflows/${parentWorkflow.id}`);
-          }
-        }
-
-        // Complete pending approval-gated tasks for this workflow
-        const relatedTasks = tasks.filter((t) => t.workflowId === approval.workflowId);
-        for (const t of relatedTasks) {
-          if (t.status !== 'completed') {
-            try {
-              await updateDoc(doc(db, 'tasks', t.id), {
-                status: 'completed',
-                updatedAt: serverTimestamp(),
-              });
-            } catch (err) {
-              handleFirestoreError(err, OperationType.UPDATE, `tasks/${t.id}`);
-            }
-          }
-        }
-
-        // Increment matching integration execution counter
-        const matchedInt = integrations.find(
-          (i) =>
-            approval.integrationTarget.toLowerCase().includes(i.name.toLowerCase()) ||
-            approval.integrationTarget.toLowerCase().includes('ticket') && i.category === 'ticketing' ||
-            approval.integrationTarget.toLowerCase().includes('email') && i.category === 'email'
-        );
-        if (matchedInt) {
-          try {
-            await updateDoc(doc(db, 'integrations', matchedInt.id), {
-              executionsCount: matchedInt.executionsCount + 1,
-              lastSyncAt: new Date().toISOString(),
-              updatedAt: serverTimestamp(),
-            });
-          } catch (err) {
-            handleFirestoreError(err, OperationType.UPDATE, `integrations/${matchedInt.id}`);
-          }
-        }
-
-        await appendAuditLog({
-          workflowId: approval.workflowId,
-          workflowTitle: approval.workflowTitle,
-          eventType: 'approval_executed',
-          actor: reviewerName,
-          summary: `${execResult.receipt}${reviewerNote ? ` Note: ${reviewerNote}` : ''}`,
-          status: 'success',
-          isSimulated: execResult.isSimulated,
-          durationMs: execResult.durationMs,
-        });
-
-        return execResult;
-      } else {
-        // Rejected or changes requested
-        if (parentWorkflow && parentWorkflow.status !== 'completed') {
-          const nextWfStatus: WorkflowStatus = decision === 'rejected' ? 'failed' : 'blocked';
-          try {
-            await updateDoc(doc(db, 'workflows', parentWorkflow.id), {
-              status: nextWfStatus,
-              durationMs: parentWorkflow.durationMs + 100,
-              updatedAt: serverTimestamp(),
-            });
-          } catch (err) {
-            handleFirestoreError(err, OperationType.UPDATE, `workflows/${parentWorkflow.id}`);
-          }
-        }
-
-        await appendAuditLog({
-          workflowId: approval.workflowId,
-          workflowTitle: approval.workflowTitle,
-          eventType: decision === 'rejected' ? 'approval_rejected' : 'approval_changes_requested',
-          actor: reviewerName,
-          summary:
-            decision === 'rejected'
-              ? `Rejected "${approval.actionType}". Reason: ${reviewerNote || 'Declined by reviewer'}`
-              : `Requested modifications for "${approval.actionType}": ${reviewerNote || 'Updates needed'}`,
-          status: decision === 'rejected' ? 'failed' : 'warning',
-          isSimulated: approval.isSimulated,
-          durationMs: 100,
-        });
-        return null;
       }
+
+      await refreshWorkspaceData(activeWorkspace.id);
+      return execResult;
     },
-    [user, profile, workflows, tasks, integrations, appendAuditLog]
+    [user, activeWorkspace, refreshWorkspaceData]
   );
 
   // --- Integrations Update ---
@@ -1329,89 +889,68 @@ export function useFlowstateData() {
         executionsCount?: number;
       }
     ) => {
-      if (!user) return;
-      try {
-        await updateDoc(doc(db, 'integrations', item.id), {
+      if (!user || !activeWorkspace) return;
+      const updated = await apiPatchJson<IntegrationItem>(
+        `/api/workspaces/${activeWorkspace.id}/integrations/${item.id}`,
+        {
           status: patch.status ?? item.status,
-          isSimulated: true, // Prototype connectors always explicitly remain labeled simulated
           endpointUrl: (patch.endpointUrl ?? item.endpointUrl ?? '').slice(0, 500),
           lastSyncAt: new Date().toISOString(),
           executionsCount: patch.executionsCount ?? item.executionsCount,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `integrations/${item.id}`);
-      }
+        }
+      );
+      setIntegrations((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...updated, ownerId: updated.ownerId || i.ownerId } : i))
+      );
     },
-    [user]
+    [user, activeWorkspace]
   );
 
   // --- Team Management ---
   const addTeamMember = useCallback(
     async (input: { name: string; role: UserRole; department: string }) => {
-      if (!user) return;
-      const memberId = makeId('tm');
-      try {
-        await setDoc(doc(db, 'teamMembers', memberId), {
-          ownerId: user.uid,
-          name: input.name.slice(0, 120),
-          role: input.role,
-          department: input.department.slice(0, 80),
-          status: 'active',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `teamMembers/${memberId}`);
-      }
+      if (!user || !activeWorkspace) return;
+      const syntheticEmail = `${input.name.toLowerCase().replace(/[^a-z0-9]+/g, '.')}@workspace.local`;
+      await inviteWorkspaceMember(
+        syntheticEmail,
+        (['Owner', 'Admin', 'Manager', 'Member', 'Viewer'].includes(input.role)
+          ? input.role
+          : 'Member') as WorkspaceRole,
+        input.department
+      );
     },
-    [user]
+    [user, activeWorkspace, inviteWorkspaceMember]
   );
 
   const updateTeamMemberRole = useCallback(
-    async (member: TeamMember, role: UserRole) => {
-      if (!user) return;
-      try {
-        await updateDoc(doc(db, 'teamMembers', member.id), {
-          role,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `teamMembers/${member.id}`);
-      }
+    async (member: TeamMember, role: WorkspaceRole) => {
+      if (!user || !activeWorkspace) return;
+      await apiPatchJson(
+        `/api/workspaces/${activeWorkspace.id}/members/${member.id}/role`,
+        { role }
+      );
+      setTeamMembers((prev) =>
+        prev.map((m) => (m.id === member.id ? { ...m, role, updatedAtMs: Date.now() } : m))
+      );
     },
-    [user]
+    [user, activeWorkspace]
   );
 
   const removeTeamMember = useCallback(
     async (memberId: string) => {
-      if (!user) return;
-      try {
-        await deleteDoc(doc(db, 'teamMembers', memberId));
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `teamMembers/${memberId}`);
-      }
+      if (!user || !activeWorkspace) return;
+      await apiDeleteJson(`/api/workspaces/${activeWorkspace.id}/members/${memberId}`);
+      setTeamMembers((prev) => prev.filter((m) => m.id !== memberId));
     },
-    [user]
+    [user, activeWorkspace]
   );
 
   // --- Profile & Settings Update ---
   const updateProfileSettings = useCallback(
     async (patch: Partial<Omit<UserProfile, 'uid' | 'role' | 'createdAt' | 'updatedAt'>>) => {
       if (!user) return;
-      if (getStoredSessionToken() || !auth.currentUser) {
-        const res = await apiPatchJson<{ profile: UserProfile }>('/api/profile', patch);
-        setProfile((prev) => (prev ? { ...prev, ...res.profile } : res.profile));
-        return;
-      }
-      try {
-        await updateDoc(doc(db, 'users', user.uid), {
-          ...patch,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
-      }
+      const res = await apiPatchJson<{ profile: UserProfile }>('/api/profile', patch);
+      setProfile((prev) => (prev ? { ...prev, ...res.profile } : res.profile));
     },
     [user]
   );
@@ -1439,7 +978,11 @@ export function useFlowstateData() {
     setTutorialCompleted(true);
     setWelcomeSeen(true);
     try {
-      await apiPatchJson('/api/profile', { welcomeSeen: true, tutorialCompleted: true, tutorialStep: 8 });
+      await apiPatchJson('/api/profile', {
+        welcomeSeen: true,
+        tutorialCompleted: true,
+        tutorialStep: 8,
+      });
     } catch {
       // non-blocking
     }
@@ -1461,7 +1004,10 @@ export function useFlowstateData() {
     async (notifId: string) => {
       if (!activeWorkspace) return;
       setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, read: true } : n)));
-      await apiPatchJson(`/api/workspaces/${activeWorkspace.id}/notifications/${notifId}/read`, {}).catch(() => {});
+      await apiPatchJson(
+        `/api/workspaces/${activeWorkspace.id}/notifications/${notifId}/read`,
+        {}
+      ).catch(() => {});
     },
     [activeWorkspace]
   );
@@ -1469,14 +1015,19 @@ export function useFlowstateData() {
   const markAllNotificationsRead = useCallback(async () => {
     if (!activeWorkspace) return;
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    await apiPostJson(`/api/workspaces/${activeWorkspace.id}/notifications/read-all`, {}).catch(() => {});
+    await apiPostJson(
+      `/api/workspaces/${activeWorkspace.id}/notifications/read-all`,
+      {}
+    ).catch(() => {});
   }, [activeWorkspace]);
 
   const archiveNotification = useCallback(
     async (notifId: string) => {
       if (!activeWorkspace) return;
       setNotifications((prev) => prev.filter((n) => n.id !== notifId));
-      await apiDeleteJson(`/api/workspaces/${activeWorkspace.id}/notifications/${notifId}`).catch(() => {});
+      await apiDeleteJson(`/api/workspaces/${activeWorkspace.id}/notifications/${notifId}`).catch(
+        () => {}
+      );
     },
     [activeWorkspace]
   );
@@ -1488,10 +1039,10 @@ export function useFlowstateData() {
         `/api/workspaces/${activeWorkspace.id}/workflows/${workflowId}/execute`,
         { idempotencyKey: idempotencyKey || `exec-${workflowId}-${Date.now()}` }
       );
-      setWorkflows((prev) => prev.map((w) => (w.id === workflowId ? res.workflow : w)));
+      await refreshWorkspaceData(activeWorkspace.id);
       return res;
     },
-    [activeWorkspace]
+    [activeWorkspace, refreshWorkspaceData]
   );
 
   return {
@@ -1525,6 +1076,7 @@ export function useFlowstateData() {
     pendingInvitations,
     switchWorkspace,
     createOrganizationWorkspace,
+    updateWorkspaceDetails,
     createDepartment,
     inviteWorkspaceMember,
     respondToInvitation,

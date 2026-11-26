@@ -81,14 +81,15 @@ export const OrganizationOnboardingView: React.FC<OrganizationOnboardingViewProp
   uid,
 }) => {
   const [currentStep, setCurrentStep] = useState(1);
+  const [stepError, setStepError] = useState<string | null>(null);
   const [data, setData] = useState<OrganizationOnboardingData>({
-    organizationName: 'Acme Global Operations',
+    organizationName: '',
     industry: 'Software & SaaS',
-    website: 'https://acmeglobal.com',
+    website: '',
     country: 'United States',
-    organizationSize: '51-250 employees',
-    ownerName: initialOwnerName || 'Alex Chen',
-    ownerRole: 'VP of Operations',
+    organizationSize: '11-50 employees',
+    ownerName: initialOwnerName || '',
+    ownerRole: '',
     departments: [],
     businessProcesses: [
       'Customer Authentication & Account Recovery',
@@ -103,19 +104,34 @@ export const OrganizationOnboardingView: React.FC<OrganizationOnboardingViewProp
   const [newDeptInput, setNewDeptInput] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<WorkspaceRole>('Member');
-  const [inviteDept, setInviteDept] = useState('Customer Support');
+  const [inviteDept, setInviteDept] = useState('General');
 
   useEffect(() => {
     const saved = loadOrgOnboarding(uid);
     if (saved) {
-      setData((prev) => ({ ...prev, ...saved }));
+      setData((prev) => ({
+        ...prev,
+        ...saved,
+        ownerName: saved.ownerName || initialOwnerName || prev.ownerName,
+      }));
     }
-  }, [uid]);
+  }, [uid, initialOwnerName]);
+
+  useEffect(() => {
+    if (data.departments.length > 0) {
+      if (!data.departments.includes(inviteDept)) {
+        setInviteDept(data.departments[0]);
+      }
+    } else if (inviteDept !== 'General') {
+      setInviteDept('General');
+    }
+  }, [data.departments, inviteDept]);
 
   const updateField = <K extends keyof OrganizationOnboardingData>(
     key: K,
     val: OrganizationOnboardingData[K]
   ) => {
+    setStepError(null);
     setData((prev) => {
       const next = { ...prev, [key]: val };
       saveOrgOnboarding(uid, next);
@@ -125,13 +141,13 @@ export const OrganizationOnboardingView: React.FC<OrganizationOnboardingViewProp
 
   const handleAddDept = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDeptInput.trim() || data.departments.includes(newDeptInput.trim())) return;
-    updateField('departments', [...data.departments, newDeptInput.trim()]);
+    const trimmed = newDeptInput.trim();
+    if (!trimmed || data.departments.includes(trimmed)) return;
+    updateField('departments', [...data.departments, trimmed]);
     setNewDeptInput('');
   };
 
   const handleRemoveDept = (dept: string) => {
-    if (data.departments.length <= 1) return;
     updateField(
       'departments',
       data.departments.filter((d) => d !== dept)
@@ -140,13 +156,19 @@ export const OrganizationOnboardingView: React.FC<OrganizationOnboardingViewProp
 
   const handleAddInvite = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteEmail.trim() || !inviteEmail.includes('@')) return;
+    const normalized = inviteEmail.trim().toLowerCase();
+    if (!normalized || !normalized.includes('@')) return;
+    if (data.teamInvitations.some((inv) => inv.email.toLowerCase() === normalized)) {
+      setStepError(`${normalized} is already in your invitation queue.`);
+      return;
+    }
+    setStepError(null);
     updateField('teamInvitations', [
       ...data.teamInvitations,
       {
-        email: inviteEmail.trim().toLowerCase(),
+        email: normalized,
         role: inviteRole,
-        department: inviteDept,
+        department: inviteDept || 'General',
       },
     ]);
     setInviteEmail('');
@@ -167,15 +189,29 @@ export const OrganizationOnboardingView: React.FC<OrganizationOnboardingViewProp
   };
 
   const handleNext = () => {
+    if (currentStep === 1 && !data.organizationName.trim()) {
+      setStepError('Please enter an organization name to continue.');
+      return;
+    }
+    if (currentStep === 2 && !data.ownerName.trim()) {
+      setStepError('Please enter the workspace owner name to continue.');
+      return;
+    }
+    setStepError(null);
     saveOrgOnboarding(uid, data);
     if (currentStep < 6) {
       setCurrentStep((s) => s + 1);
     } else {
-      onComplete(data);
+      onComplete({
+        ...data,
+        organizationName: data.organizationName.trim(),
+        ownerName: data.ownerName.trim() || initialOwnerName || 'Owner',
+      });
     }
   };
 
   const handleBack = () => {
+    setStepError(null);
     if (currentStep > 1) {
       setCurrentStep((s) => s - 1);
     }
@@ -188,8 +224,8 @@ export const OrganizationOnboardingView: React.FC<OrganizationOnboardingViewProp
         <div className="lg:col-span-4 p-6 sm:p-8 bg-gradient-to-b from-[#F8FAFD] to-[#EEF2FF] dark:from-[#0F172A] dark:to-[#111827] border-r border-[#E5E5E5] dark:border-[#262626]/80 flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2.5 mb-8">
-              <div className="w-8 h-8 rounded-lg bg-[#111111] dark:bg-white text-white dark:text-[#111111] flex items-center justify-center text-white shadow-xs">
-                <Building2 className="w-4 h-4 text-white" />
+              <div className="w-8 h-8 rounded-lg bg-[#111111] dark:bg-white text-white dark:text-[#111111] flex items-center justify-center shadow-xs">
+                <Building2 className="w-4 h-4" />
               </div>
               <span className="font-display font-bold text-base text-[#111111] dark:text-white">
                 FLOWSTATE
@@ -262,6 +298,11 @@ export const OrganizationOnboardingView: React.FC<OrganizationOnboardingViewProp
         {/* Right Interactive Form Pane */}
         <div className="lg:col-span-8 p-6 sm:p-10 flex flex-col justify-between">
           <div>
+            {stepError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-xs text-red-700 dark:text-red-300">
+                {stepError}
+              </div>
+            )}
             {/* Step 1: Organization Profile */}
             {currentStep === 1 && (
               <div className="space-y-4">
@@ -302,7 +343,10 @@ export const OrganizationOnboardingView: React.FC<OrganizationOnboardingViewProp
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (!file) return;
-                              if (file.size > 1024 * 1024) return;
+                              if (file.size > 1024 * 1024) {
+                                setStepError('Organization logo must be smaller than 1 MB.');
+                                return;
+                              }
                               const reader = new FileReader();
                               reader.onload = () => {
                                 if (typeof reader.result === 'string') {
@@ -566,7 +610,7 @@ export const OrganizationOnboardingView: React.FC<OrganizationOnboardingViewProp
                     onChange={(e) => setInviteDept(e.target.value)}
                     className="sm:col-span-3 px-3.5 py-2.5 text-xs rounded-xl border border-[#E5E5E5] dark:border-[#262626] bg-[#FAFAFA] dark:bg-[#161616] text-[#111111] dark:text-white"
                   >
-                    {data.departments.map((d) => (
+                    {(data.departments.length > 0 ? data.departments : ['General']).map((d) => (
                       <option key={d} value={d}>
                         {d}
                       </option>
@@ -623,7 +667,7 @@ export const OrganizationOnboardingView: React.FC<OrganizationOnboardingViewProp
                     Review and launch organization workspace
                   </h3>
                   <p className="text-xs sm:text-sm text-[#737373] dark:text-[#737373] mt-1">
-                    Your multi-tenant enterprise workspace is ready to configure and seed.
+                    Your multi-tenant enterprise workspace is ready to launch.
                   </p>
                 </div>
 
@@ -637,7 +681,8 @@ export const OrganizationOnboardingView: React.FC<OrganizationOnboardingViewProp
                   <div className="flex justify-between pb-2 border-b border-[#E5E5E5] dark:border-[#262626]">
                     <span className="text-[#737373]">Owner & Role:</span>
                     <span className="font-semibold text-[#111111] dark:text-white">
-                      {data.ownerName} ({data.ownerRole})
+                      {data.ownerName || 'Owner'}
+                      {data.ownerRole ? ` (${data.ownerRole})` : ''}
                     </span>
                   </div>
                   <div className="flex justify-between pb-2 border-b border-[#E5E5E5] dark:border-[#262626]">
