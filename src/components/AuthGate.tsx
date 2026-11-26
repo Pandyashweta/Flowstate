@@ -8,8 +8,8 @@ interface AuthGateProps {
 
 export const AuthGate: React.FC<AuthGateProps> = ({ onSignIn, error }) => {
   return (
-    <div className="min-h-screen bg-[#F4F7FC] dark:bg-[#0B1120] flex flex-col justify-center items-center p-6">
-      <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-12 bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+    <div className="min-h-screen bg-[#FAFAFA] dark:bg-[#0A0A0A] flex flex-col justify-center items-center p-6">
+      <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-12 bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-3xl overflow-hidden shadow-sm">
         {/* Left Hero Visual Pane */}
         <div className="lg:col-span-7 p-8 sm:p-12 bg-gradient-to-br from-[#EEF2FF] via-[#F3E8FF]/70 to-[#E0F2FE] dark:from-[#151D35] dark:via-[#1C1B3A] dark:to-[#11223B] flex flex-col justify-between relative overflow-hidden">
           <div className="relative z-10">
@@ -30,46 +30,46 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSignIn, error }) => {
                   />
                 </svg>
               </div>
-              <span className="font-display font-bold text-xl tracking-tight text-slate-900 dark:text-white">
+              <span className="font-display font-bold text-xl tracking-tight text-[#111111] dark:text-white">
                 FLOWSTATE
               </span>
             </div>
 
-            <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white leading-tight max-w-md mb-4">
+            <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-[#111111] dark:text-white leading-tight max-w-md mb-4">
               Voice-Driven Agentic{' '}
               <span className="text-blue-600 dark:text-blue-400">Workflow Automation</span>
             </h1>
-            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-md leading-relaxed mb-8">
+            <p className="text-sm sm:text-base text-[#525252] dark:text-[#D4D4D4] max-w-md leading-relaxed mb-8">
               Turning everyday business instructions into structured, actionable workflows. One
               instruction. Connected processes. Work that moves forward.
             </p>
           </div>
 
           <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="bg-white/80 dark:bg-slate-900/70 backdrop-blur-sm border border-white/80 dark:border-slate-700/60 rounded-xl p-3.5">
+            <div className="bg-white/80 dark:bg-[#161616]/70 backdrop-blur-sm border border-white/80 dark:border-[#333333]/60 rounded-xl p-3.5">
               <Mic className="w-4 h-4 text-blue-600 dark:text-blue-400 mb-2" />
-              <div className="text-xs font-semibold text-slate-900 dark:text-white">
+              <div className="text-xs font-semibold text-[#111111] dark:text-white">
                 Voice Command Center
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              <div className="text-xs text-[#737373] dark:text-[#737373] mt-0.5">
                 Live STT, multilingual & TTS
               </div>
             </div>
-            <div className="bg-white/80 dark:bg-slate-900/70 backdrop-blur-sm border border-white/80 dark:border-slate-700/60 rounded-xl p-3.5">
+            <div className="bg-white/80 dark:bg-[#161616]/70 backdrop-blur-sm border border-white/80 dark:border-[#333333]/60 rounded-xl p-3.5">
               <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400 mb-2" />
-              <div className="text-xs font-semibold text-slate-900 dark:text-white">
+              <div className="text-xs font-semibold text-[#111111] dark:text-white">
                 Grounded RAG Docs
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              <div className="text-xs text-[#737373] dark:text-[#737373] mt-0.5">
                 PDF, DOCX & TXT retrieval
               </div>
             </div>
-            <div className="bg-white/80 dark:bg-slate-900/70 backdrop-blur-sm border border-white/80 dark:border-slate-700/60 rounded-xl p-3.5">
+            <div className="bg-white/80 dark:bg-[#161616]/70 backdrop-blur-sm border border-white/80 dark:border-[#333333]/60 rounded-xl p-3.5">
               <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mb-2" />
-              <div className="text-xs font-semibold text-slate-900 dark:text-white">
+              <div className="text-xs font-semibold text-[#111111] dark:text-white">
                 Human-in-the-Loop
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              <div className="text-xs text-[#737373] dark:text-[#737373] mt-0.5">
                 RBAC & immutable audit trail
               </div>
             </div>
@@ -86,10 +86,10 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSignIn, error }) => {
         {/* Right Sign-In Pane */}
         <div className="lg:col-span-5 p-8 sm:p-12 flex flex-col justify-center">
           <div className="mb-8">
-            <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-white mb-2">
+            <h2 className="font-display text-2xl font-bold text-[#111111] dark:text-white mb-2">
               Sign in to workspace
             </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p className="text-sm text-[#737373] dark:text-[#737373]">
               Authenticate with your enterprise Google account to access persistent Firestore
               workflows, knowledge documents, and approval queues.
             </p>
@@ -104,7 +104,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSignIn, error }) => {
           <button
             type="button"
             onClick={onSignIn}
-            className="w-full flex items-center justify-center gap-3 px-5 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-colors shadow-sm cursor-pointer"
+            className="w-full flex items-center justify-center gap-3 px-5 py-3.5 rounded-xl bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] font-medium text-sm transition-colors shadow-sm cursor-pointer"
           >
             <svg className="w-4 h-4 bg-white rounded-full p-0.5" viewBox="0 0 24 24">
               <path
@@ -128,7 +128,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSignIn, error }) => {
             <ArrowRight className="w-4 h-4 ml-auto" />
           </button>
 
-          <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 space-y-2.5 text-xs text-slate-500 dark:text-slate-400">
+          <div className="mt-8 pt-6 border-t border-[#E5E5E5] dark:border-[#262626] space-y-2.5 text-xs text-[#737373] dark:text-[#737373]">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>Pre-loaded with Customer Support incident playbooks for live RAG demo</span>

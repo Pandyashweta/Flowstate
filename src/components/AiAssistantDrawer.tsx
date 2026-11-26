@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
-import { ArrowUpRight, Loader2, Mic, MicOff, Send, Sparkles, X } from 'lucide-react';
-import { CommandMessage } from '../types';
+import {
+  ArrowUp,
+  ArrowUpRight,
+  Briefcase,
+  Building2,
+  Loader2,
+  Mic,
+  MicOff,
+  Sparkles,
+  X,
+} from 'lucide-react';
+import { CommandMessage, Workspace } from '../types';
 
 interface AiAssistantDrawerProps {
   open: boolean;
@@ -11,6 +21,7 @@ interface AiAssistantDrawerProps {
   onOpenFullCommandCenter: () => void;
   isListening: boolean;
   onToggleVoice: () => void;
+  activeWorkspace?: Workspace | null;
 }
 
 export const AiAssistantDrawer: React.FC<AiAssistantDrawerProps> = ({
@@ -22,6 +33,7 @@ export const AiAssistantDrawer: React.FC<AiAssistantDrawerProps> = ({
   onOpenFullCommandCenter,
   isListening,
   onToggleVoice,
+  activeWorkspace,
 }) => {
   const [text, setText] = useState('');
 
@@ -35,13 +47,17 @@ export const AiAssistantDrawer: React.FC<AiAssistantDrawerProps> = ({
     await onSendCommand(value, 'text');
   };
 
-  return (
-    <aside className="hidden lg:flex flex-col w-[360px] shrink-0 h-[calc(100vh-4rem)] sticky top-16 bg-white dark:bg-[#0F172A] border-l border-[#E6ECF5] dark:border-slate-800">
-      <div className="px-4 py-3.5 border-b border-[#EEF2F7] dark:border-slate-800 flex items-center justify-between">
+  const panelBody = (
+    <div className="flex flex-col h-full bg-white dark:bg-[#111111]">
+      {/* Header matching Plane AI right pane */}
+      <div className="h-11 px-4 border-b border-[#E5E5E5] dark:border-[#262626] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-          <span className="font-display text-sm font-bold text-slate-900 dark:text-white">
+          <Sparkles className="w-3.5 h-3.5 text-[#111111] dark:text-white" />
+          <span className="font-display text-[13px] font-semibold text-[#111111] dark:text-white">
             FLOWSTATE AI
+          </span>
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F5F5F5] dark:bg-[#1F1F1F] text-[#737373]">
+            Gemini Live
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -49,49 +65,63 @@ export const AiAssistantDrawer: React.FC<AiAssistantDrawerProps> = ({
             type="button"
             onClick={onOpenFullCommandCenter}
             title="Expand to AI Command Center"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+            className="p-1.5 rounded-md text-[#737373] hover:text-[#111111] dark:hover:text-white hover:bg-[#F5F5F5] dark:hover:bg-[#1F1F1F] cursor-pointer"
           >
-            <ArrowUpRight className="w-4 h-4" />
+            <ArrowUpRight className="w-3.5 h-3.5" />
           </button>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close AI assistant"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+            className="p-1.5 rounded-md text-[#737373] hover:text-[#111111] dark:hover:text-white hover:bg-[#F5F5F5] dark:hover:bg-[#1F1F1F] cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
         {messages.length === 0 ? (
-          <div className="space-y-3 py-4">
-            <p className="text-slate-500 dark:text-slate-400 leading-relaxed">
-              Ask FLOWSTATE to inspect workflows, query internal documentation, or orchestrate a
-              new automated workflow.
+          <div className="py-6 space-y-3">
+            <p className="text-[#737373] leading-relaxed">
+              Ask FLOWSTATE AI to inspect workflows, query your knowledge base, or create and assign automated tasks.
             </p>
-            <button
-              type="button"
-              onClick={() =>
-                void onSendCommand(
-                  'A customer cannot log into their account. Check previous incidents, identify possible solutions, create a support ticket and assign it to the appropriate team.',
-                  'text'
-                )
-              }
-              className="w-full text-left p-3 rounded-xl border border-[#E6ECF5] dark:border-slate-800 hover:border-blue-300 bg-[#F8FAFD] dark:bg-slate-900 text-slate-700 dark:text-slate-200 cursor-pointer"
-            >
-              Run customer login incident workflow →
-            </button>
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() =>
+                  void onSendCommand(
+                    'Show workflows or tasks awaiting approval or attention.',
+                    'text'
+                  )
+                }
+                className="w-full text-left px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#262626] hover:border-[#A3A3A3] dark:hover:border-[#525252] bg-[#FAFAFA] dark:bg-[#161616] text-[#404040] dark:text-[#D4D4D4] transition-colors cursor-pointer"
+              >
+                Show workflows awaiting approval
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  void onSendCommand(
+                    'Summarize my workspace tasks and open priorities.',
+                    'text'
+                  )
+                }
+                className="w-full text-left px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#262626] hover:border-[#A3A3A3] dark:hover:border-[#525252] bg-[#FAFAFA] dark:bg-[#161616] text-[#404040] dark:text-[#D4D4D4] transition-colors cursor-pointer"
+              >
+                Summarize open workspace tasks
+              </button>
+            </div>
           </div>
         ) : (
-          messages.slice(-8).map((m) => (
+          messages.slice(-10).map((m) => (
             <div
               key={m.id}
-              className={`p-3 rounded-xl leading-relaxed ${
+              className={`leading-relaxed ${
                 m.role === 'user'
-                  ? 'bg-[#EEF4FF] dark:bg-blue-950/60 text-slate-900 dark:text-white ml-6'
-                  : 'bg-[#F8FAFD] dark:bg-slate-900 border border-[#E6ECF5] dark:border-slate-800 text-slate-700 dark:text-slate-200'
+                  ? 'ml-8 p-2.5 rounded-lg bg-[#F5F5F5] dark:bg-[#1C1C1C] text-[#111111] dark:text-white'
+                  : 'text-[#262626] dark:text-[#E5E5E5] py-1'
               }`}
             >
               <div className="whitespace-pre-wrap">{m.content}</div>
@@ -99,7 +129,7 @@ export const AiAssistantDrawer: React.FC<AiAssistantDrawerProps> = ({
                 <button
                   type="button"
                   onClick={onOpenFullCommandCenter}
-                  className="mt-2 inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 font-semibold hover:underline cursor-pointer"
+                  className="mt-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-[#E5E5E5] dark:border-[#262626] bg-[#FAFAFA] dark:bg-[#161616] text-[11px] font-semibold text-[#111111] dark:text-white hover:bg-[#F0F0F0] dark:hover:bg-[#222222] cursor-pointer"
                 >
                   <span>Review & Approve Workflow</span>
                   <ArrowUpRight className="w-3 h-3" />
@@ -110,45 +140,92 @@ export const AiAssistantDrawer: React.FC<AiAssistantDrawerProps> = ({
         )}
 
         {isProcessing && (
-          <div className="flex items-center gap-2 text-slate-500 p-2">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-            <span>Orchestrating...</span>
+          <div className="flex items-center gap-2 text-[#737373] py-1">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <span>Thinking...</span>
           </div>
         )}
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="p-3 border-t border-[#EEF2F7] dark:border-slate-800 bg-[#FAFBFD] dark:bg-slate-900/60"
-      >
-        <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-[#DDE4F2] dark:border-slate-700 rounded-xl p-1.5">
-          <input
-            type="text"
+      {/* Bottom Plane-style Context Composer */}
+      <form onSubmit={handleSubmit} className="p-3 border-t border-[#E5E5E5] dark:border-[#262626]">
+        <div className="rounded-xl border border-[#E5E5E5] dark:border-[#262626] bg-[#FAFAFA] dark:bg-[#161616] p-2.5 space-y-2 focus-within:border-[#111111] dark:focus-within:border-white transition-colors">
+          {activeWorkspace && (
+            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white dark:bg-[#1F1F1F] border border-[#E5E5E5] dark:border-[#262626] text-[11px] font-medium text-[#111111] dark:text-white max-w-full">
+              {activeWorkspace.logoUrl ? (
+                <img
+                  src={activeWorkspace.logoUrl}
+                  alt={activeWorkspace.name}
+                  className="w-3.5 h-3.5 rounded-xs object-cover shrink-0"
+                />
+              ) : activeWorkspace.type === 'personal' ? (
+                <Briefcase className="w-3 h-3 text-[#737373] shrink-0" />
+              ) : (
+                <Building2 className="w-3 h-3 text-[#737373] shrink-0" />
+              )}
+              <span className="truncate">{activeWorkspace.name}</span>
+            </div>
+          )}
+
+          <textarea
+            rows={2}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Ask AI or describe a workflow..."
-            className="flex-1 min-w-0 px-2 text-xs bg-transparent focus:outline-none text-slate-800 dark:text-slate-100"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void handleSubmit(e);
+              }
+            }}
+            placeholder="Ask AI, @ for context, / for commands"
+            className="w-full resize-none bg-transparent text-xs text-[#111111] dark:text-white placeholder:text-[#737373] focus:outline-none"
           />
-          <button
-            type="button"
-            onClick={onToggleVoice}
-            className={`p-2 rounded-lg cursor-pointer ${
-              isListening
-                ? 'bg-red-600 text-white'
-                : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-          </button>
-          <button
-            type="submit"
-            disabled={isProcessing || !text.trim()}
-            className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 cursor-pointer"
-          >
-            <Send className="w-3.5 h-3.5" />
-          </button>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-[#E5E5E5] dark:border-[#262626] bg-white dark:bg-[#1F1F1F] text-[11px] font-medium text-[#404040] dark:text-[#D4D4D4]">
+              <Sparkles className="w-3 h-3" />
+              <span>Ask</span>
+            </span>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onToggleVoice}
+                title={isListening ? 'Stop voice' : 'Voice input'}
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                  isListening
+                    ? 'bg-red-600 text-white'
+                    : 'text-[#737373] hover:text-[#111111] dark:hover:text-white hover:bg-[#EFEFEF] dark:hover:bg-[#262626]'
+                }`}
+              >
+                {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                type="submit"
+                disabled={isProcessing || !text.trim()}
+                aria-label="Send"
+                className="w-7 h-7 rounded-md bg-[#111111] dark:bg-white text-white dark:text-[#111111] flex items-center justify-center hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer"
+              >
+                <ArrowUp className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
       </form>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      <aside className="hidden lg:flex flex-col w-[340px] xl:w-[370px] shrink-0 h-full border-l border-[#E5E5E5] dark:border-[#262626]">
+        {panelBody}
+      </aside>
+      <div className="lg:hidden fixed inset-0 z-50 flex justify-end">
+        <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+        <aside className="relative w-full max-w-sm h-full border-l border-[#E5E5E5] dark:border-[#262626] shadow-2xl">
+          {panelBody}
+        </aside>
+      </div>
+    </>
   );
 };

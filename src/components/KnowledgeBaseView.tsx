@@ -189,31 +189,31 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
       {/* Left 7 Columns: Document Upload, Categories, Semantic Search & Library */}
       <div className="xl:col-span-7 space-y-5">
         {/* Upload & Authoring Bar */}
-        <div className="rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5">
+        <div className="rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
-              <h2 className="font-display text-base font-bold text-slate-900 dark:text-white">
+              <h2 className="font-display text-base font-bold text-[#111111] dark:text-white">
                 Enterprise Knowledge Library
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-[#737373] dark:text-[#737373]">
                 Upload PDF, DOCX, or TXT runbooks for real Gemini semantic embeddings & RAG
               </p>
             </div>
             <button
               type="button"
               onClick={() => setShowManualModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E6ECF5] dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5E5E5] dark:border-[#333333] text-xs font-medium text-[#404040] dark:text-[#E5E5E5] hover:bg-[#FAFAFA] dark:hover:bg-[#1F1F1F] cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Write Document</span>
             </button>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-4 rounded-xl border border-dashed border-blue-300 dark:border-blue-800 bg-[#F7FAFF] dark:bg-blue-950/20">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-4 rounded-xl border border-dashed border-[#D4D4D4] dark:border-[#333333] bg-[#FAFAFA] dark:bg-[#161616]">
             <select
               value={uploadCategory}
               onChange={(e) => setUploadCategory(e.target.value)}
-              className="text-xs px-3 py-2 rounded-lg border border-[#DDE4F2] dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200"
+              className="text-xs px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616] text-[#404040] dark:text-[#E5E5E5]"
             >
               {CATEGORIES.filter((c) => c !== 'All').map((c) => (
                 <option key={c} value={c}>
@@ -234,7 +234,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
               type="button"
               disabled={uploading}
               onClick={() => fileInputRef.current?.click()}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60"
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60"
             >
               {uploading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -253,31 +253,31 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
         </div>
 
         {/* Semantic Search Box */}
-        <div className="rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5 space-y-4">
+        <div className="rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-5 space-y-4">
           <form onSubmit={handleSemanticSearch} className="flex gap-2">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-[#737373] absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={semanticQuery}
                 onChange={(e) => setSemanticQuery(e.target.value)}
                 placeholder="Semantic vector search across internal docs (e.g., SAML certificate error)..."
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#DDE4F2] dark:border-slate-700 bg-[#F8FAFD] dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#E5E5E5] dark:border-[#333333] bg-[#FAFAFA] dark:bg-[#161616] text-xs text-[#111111] dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               />
             </div>
             <button
               type="submit"
               disabled={searching}
-              className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-blue-600 text-white text-xs font-medium cursor-pointer disabled:opacity-60 whitespace-nowrap"
+              className="px-4 py-2 rounded-xl bg-[#111111] dark:bg-white text-white dark:text-[#111111] text-xs font-medium cursor-pointer disabled:opacity-60 whitespace-nowrap"
             >
               {searching ? 'Searching...' : 'Semantic Search'}
             </button>
           </form>
 
           {searchResults && (
-            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <div className="space-y-2 pt-2 border-t border-[#E5E5E5] dark:border-[#262626]">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                <span className="font-semibold text-[#262626] dark:text-[#E5E5E5]">
                   Semantic Matches ({searchResults.length})
                 </span>
                 <button
@@ -286,7 +286,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                     setSearchResults(null);
                     setSemanticQuery('');
                   }}
-                  className="text-blue-600 hover:underline cursor-pointer"
+                  className="text-[#111111] dark:text-white hover:underline cursor-pointer"
                 >
                   Clear
                 </button>
@@ -294,15 +294,15 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
               {searchResults.map((res, idx) => (
                 <div
                   key={`${res.docId}-${idx}`}
-                  className="p-3 rounded-xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 text-xs"
+                  className="p-3 rounded-xl bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] text-xs"
                 >
-                  <div className="flex items-center justify-between gap-2 font-semibold text-slate-900 dark:text-white">
+                  <div className="flex items-center justify-between gap-2 font-semibold text-[#111111] dark:text-white">
                     <span>{res.docTitle}</span>
-                    <span className="font-mono text-blue-600 dark:text-blue-400 tabular-nums">
+                    <span className="font-mono text-[#111111] dark:text-white tabular-nums">
                       {Math.round(res.similarity * 100)}% relevance
                     </span>
                   </div>
-                  <p className="text-slate-600 dark:text-slate-300 mt-1 line-clamp-3">
+                  <p className="text-[#525252] dark:text-[#D4D4D4] mt-1 line-clamp-3">
                     {res.excerpt}
                   </p>
                 </div>
@@ -319,8 +319,8 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                 onClick={() => setSelectedCategory(cat)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                   selectedCategory === cat
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-[#F4F7FC] dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-[#111111] dark:bg-white text-white dark:text-[#111111]'
+                    : 'bg-[#FAFAFA] dark:bg-[#161616] text-[#525252] dark:text-[#737373] hover:text-[#111111] dark:hover:text-white'
                 }`}
               >
                 {cat}
@@ -333,7 +333,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             {filteredDocs.map((doc) => (
               <div
                 key={doc.id}
-                className="p-4 rounded-xl border border-[#E6ECF5] dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 transition-colors flex items-start justify-between gap-3"
+                className="p-4 rounded-xl border border-[#E5E5E5] dark:border-[#262626] hover:border-[#A3A3A3] dark:hover:border-[#525252] transition-colors flex items-start justify-between gap-3"
               >
                 <button
                   type="button"
@@ -341,15 +341,15 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                   className="text-left flex-1 min-w-0 cursor-pointer"
                 >
                   <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                    <span className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                    <FileText className="w-4 h-4 text-[#111111] dark:text-white shrink-0" />
+                    <span className="text-sm font-semibold text-[#111111] dark:text-white truncate">
                       {doc.title}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                  <p className="text-xs text-[#737373] dark:text-[#737373] mt-1 line-clamp-2">
                     {doc.summary}
                   </p>
-                  <div className="mt-2 text-[11px] text-slate-400 font-mono">
+                  <div className="mt-2 text-[11px] text-[#737373] font-mono">
                     {doc.category} · {doc.fileType.toUpperCase()} · {doc.wordCount} words
                   </div>
                 </button>
@@ -357,14 +357,14 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                   type="button"
                   onClick={() => void onDeleteDoc(doc.id)}
                   title="Delete document"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer shrink-0"
+                  className="p-1.5 rounded-lg text-[#737373] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer shrink-0"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
             ))}
             {filteredDocs.length === 0 && (
-              <div className="py-10 text-center text-xs text-slate-400">
+              <div className="py-10 text-center text-xs text-[#737373]">
                 No documents in this category yet.
               </div>
             )}
@@ -373,15 +373,15 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
       </div>
 
       {/* Right 5 Columns: Grounded RAG Q&A Assistant */}
-      <div className="xl:col-span-5 rounded-2xl bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 p-5 flex flex-col">
-        <div className="pb-4 border-b border-slate-100 dark:border-slate-800 mb-4">
+      <div className="xl:col-span-5 rounded-2xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] p-5 flex flex-col">
+        <div className="pb-4 border-b border-[#E5E5E5] dark:border-[#262626] mb-4">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">
+            <Sparkles className="w-4 h-4 text-[#111111] dark:text-white" />
+            <h3 className="font-display text-base font-bold text-[#111111] dark:text-white">
               Grounded Knowledge Assistant (RAG)
             </h3>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          <p className="text-xs text-[#737373] dark:text-[#737373] mt-1">
             Answers strictly from uploaded company documentation with inline source citations.
             Unsupported policies are never fabricated.
           </p>
@@ -392,25 +392,14 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             rows={3}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask about internal policies, past login incidents, or SLAs (e.g., How was INC-2026-0389 resolved and which team handles it?)"
-            className="w-full p-3 rounded-xl border border-[#DDE4F2] dark:border-slate-700 bg-[#F8FAFD] dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            placeholder="Ask about internal policies, past incidents, or SLAs..."
+            className="w-full p-3 rounded-xl border border-[#E5E5E5] dark:border-[#333333] bg-[#FAFAFA] dark:bg-[#161616] text-xs text-[#111111] dark:text-white focus:outline-none focus:border-[#111111] dark:focus:border-white"
           />
-          <div className="flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                setQuestion(
-                  'What are the recorded previous incidents for customer login failures and what is the escalation policy?'
-                )
-              }
-              className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-            >
-              Try sample incident question
-            </button>
+          <div className="flex items-center justify-end gap-2">
             <button
               type="submit"
               disabled={asking || !question.trim()}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] text-xs font-semibold cursor-pointer disabled:opacity-50"
             >
               {asking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               <span>Ask Knowledge Base</span>
@@ -434,7 +423,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                     : 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/60'
                 }`}
               >
-                <div className="flex items-center gap-1.5 font-semibold mb-2 text-slate-900 dark:text-white">
+                <div className="flex items-center gap-1.5 font-semibold mb-2 text-[#111111] dark:text-white">
                   {ragAnswer.grounded ? (
                     <BookOpen className="w-4 h-4 text-emerald-600" />
                   ) : (
@@ -446,28 +435,28 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                       : 'Not Found in Uploaded Documentation'}
                   </span>
                 </div>
-                <p className="text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
+                <p className="text-[#262626] dark:text-[#E5E5E5] whitespace-pre-wrap">
                   {ragAnswer.answer}
                 </p>
               </div>
 
               {ragAnswer.citations.length > 0 && (
                 <div className="space-y-2">
-                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  <div className="text-xs font-semibold text-[#262626] dark:text-[#E5E5E5]">
                     Source Excerpts ({ragAnswer.citations.length})
                   </div>
                   {ragAnswer.citations.map((cit, i) => (
                     <div
                       key={`${cit.docId}-${i}`}
-                      className="p-3 rounded-xl bg-[#F8FAFD] dark:bg-slate-900 border border-[#E6ECF5] dark:border-slate-800 text-xs"
+                      className="p-3 rounded-xl bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] text-xs"
                     >
-                      <div className="flex items-center justify-between gap-2 font-semibold text-slate-900 dark:text-white">
+                      <div className="flex items-center justify-between gap-2 font-semibold text-[#111111] dark:text-white">
                         <span className="truncate">{cit.docTitle}</span>
-                        <span className="font-mono text-blue-600 dark:text-blue-400 tabular-nums shrink-0">
+                        <span className="font-mono text-[#111111] dark:text-white tabular-nums shrink-0">
                           {Math.round(cit.similarity * 100)}%
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 whitespace-pre-wrap">
+                      <p className="text-[11px] text-[#737373] dark:text-[#737373] mt-1 whitespace-pre-wrap">
                         {cit.excerpt}
                       </p>
                     </div>
@@ -476,7 +465,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
               )}
             </>
           ) : (
-            <div className="py-12 text-center text-xs text-slate-400">
+            <div className="py-12 text-center text-xs text-[#737373]">
               Submit a question above to query your enterprise knowledge base with Gemini semantic
               retrieval.
             </div>
@@ -491,25 +480,25 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs"
             onClick={() => setSelectedDoc(null)}
           />
-          <div className="relative z-10 w-full max-w-2xl max-h-[82vh] bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 rounded-2xl p-6 flex flex-col shadow-2xl">
-            <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="relative z-10 w-full max-w-2xl max-h-[82vh] bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-2xl p-6 flex flex-col shadow-2xl">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-[#E5E5E5] dark:border-[#262626]">
               <div>
-                <div className="text-xs font-mono text-blue-600 dark:text-blue-400">
+                <div className="text-xs font-mono text-[#111111] dark:text-white">
                   {selectedDoc.category} · {selectedDoc.fileName}
                 </div>
-                <h3 className="font-display text-base font-bold text-slate-900 dark:text-white mt-0.5">
+                <h3 className="font-display text-base font-bold text-[#111111] dark:text-white mt-0.5">
                   {selectedDoc.title}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedDoc(null)}
-                className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                className="p-1 text-[#737373] hover:text-[#404040] cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <pre className="mt-4 flex-1 overflow-y-auto whitespace-pre-wrap font-sans text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-[#F8FAFD] dark:bg-slate-900 p-4 rounded-xl border border-[#E6ECF5] dark:border-slate-800">
+            <pre className="mt-4 flex-1 overflow-y-auto whitespace-pre-wrap font-sans text-xs text-[#404040] dark:text-[#D4D4D4] leading-relaxed bg-[#FAFAFA] dark:bg-[#161616] p-4 rounded-xl border border-[#E5E5E5] dark:border-[#262626]">
               {selectedDoc.content}
             </pre>
           </div>
@@ -525,23 +514,23 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
           />
           <form
             onSubmit={handleSaveManual}
-            className="relative z-10 w-full max-w-lg bg-white dark:bg-[#111827] border border-[#E6ECF5] dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl"
+            className="relative z-10 w-full max-w-lg bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626] rounded-2xl p-6 space-y-4 shadow-xl"
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">
+              <h3 className="font-display text-base font-bold text-[#111111] dark:text-white">
                 Add Internal Policy or Runbook
               </h3>
               <button
                 type="button"
                 onClick={() => setShowManualModal(false)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="text-[#737373] hover:text-[#525252] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block font-medium text-slate-600 dark:text-slate-300 mb-1">
+                <label className="block font-medium text-[#525252] dark:text-[#D4D4D4] mb-1">
                   Title
                 </label>
                 <input
@@ -550,17 +539,17 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                   value={manualTitle}
                   onChange={(e) => setManualTitle(e.target.value)}
                   placeholder="e.g., API Rate Limit Escalation SOP"
-                  className="w-full px-3 py-2 rounded-lg border border-[#E6ECF5] dark:border-slate-700 bg-white dark:bg-slate-900"
+                  className="w-full px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
                 />
               </div>
               <div>
-                <label className="block font-medium text-slate-600 dark:text-slate-300 mb-1">
+                <label className="block font-medium text-[#525252] dark:text-[#D4D4D4] mb-1">
                   Category
                 </label>
                 <select
                   value={manualCategory}
                   onChange={(e) => setManualCategory(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-[#E6ECF5] dark:border-slate-700 bg-white dark:bg-slate-900"
+                  className="w-full px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
                 >
                   {CATEGORIES.filter((c) => c !== 'All').map((c) => (
                     <option key={c} value={c}>
@@ -570,7 +559,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                 </select>
               </div>
               <div>
-                <label className="block font-medium text-slate-600 dark:text-slate-300 mb-1">
+                <label className="block font-medium text-[#525252] dark:text-[#D4D4D4] mb-1">
                   Document Content
                 </label>
                 <textarea
@@ -579,7 +568,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                   value={manualContent}
                   onChange={(e) => setManualContent(e.target.value)}
                   placeholder="Paste SOP steps, previous incident records, or SLA rules..."
-                  className="w-full px-3 py-2 rounded-lg border border-[#E6ECF5] dark:border-slate-700 bg-white dark:bg-slate-900"
+                  className="w-full px-3 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#161616]"
                 />
               </div>
             </div>
@@ -587,13 +576,13 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowManualModal(false)}
-                className="px-4 py-2 rounded-lg border border-[#E6ECF5] dark:border-slate-700 text-xs font-medium cursor-pointer"
+                className="px-4 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#333333] text-xs font-medium cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold cursor-pointer"
+                className="px-4 py-2 rounded-lg bg-[#111111] hover:bg-[#262626] dark:bg-white dark:hover:bg-[#E5E5E5] text-white dark:text-[#111111] text-xs font-semibold cursor-pointer"
               >
                 Save to Knowledge Base
               </button>

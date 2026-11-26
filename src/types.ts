@@ -1,4 +1,8 @@
-export type UserRole = 'Admin' | 'Approver' | 'Operator' | 'Viewer';
+export type WorkspaceRole = 'Owner' | 'Admin' | 'Manager' | 'Member' | 'Viewer';
+
+export type UserRole = WorkspaceRole | 'Approver' | 'Operator';
+
+export type WorkspaceType = 'personal' | 'organization';
 
 export type WorkflowStatus =
   | 'draft'
@@ -7,7 +11,9 @@ export type WorkflowStatus =
   | 'in_progress'
   | 'blocked'
   | 'completed'
-  | 'failed';
+  | 'failed'
+  | 'paused'
+  | 'cancelled';
 
 export type PriorityLevel = 'low' | 'medium' | 'high' | 'critical';
 
@@ -42,10 +48,104 @@ export type NavSection =
   | 'integrations'
   | 'settings';
 
+export interface WorkspaceMember {
+  id: string;
+  uid?: string;
+  email: string;
+  name: string;
+  role: WorkspaceRole;
+  department: string;
+  avatarUrl?: string;
+  status: 'active' | 'invited';
+  joinedAtMs?: number;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  type: WorkspaceType;
+  ownerId: string;
+  role: WorkspaceRole;
+  logoUrl?: string;
+  industry?: string;
+  website?: string;
+  country?: string;
+  size?: string;
+  departments: string[];
+  members: WorkspaceMember[];
+  onboardingCompleted: boolean;
+  createdAtMs: number;
+  updatedAtMs: number;
+}
+
+export interface PersonalOnboardingData {
+  fullName: string;
+  profileImage?: string;
+  jobTitle: string;
+  professionalBackground: string;
+  profession: string;
+  responsibilities: string;
+  typeOfWork: string;
+  mainActivities: string;
+  automationGoals: string[];
+  existingTools: string[];
+  interactionPreference: 'voice' | 'text' | 'both';
+  languagePreference: string;
+  notificationPreferences: {
+    emailApprovals: boolean;
+    emailFailures: boolean;
+    browserPush: boolean;
+  };
+}
+
+export interface OrganizationOnboardingData {
+  organizationName: string;
+  logoUrl?: string;
+  industry: string;
+  website: string;
+  country: string;
+  organizationSize: string;
+  ownerName: string;
+  ownerRole: string;
+  departments: string[];
+  businessProcesses: string[];
+  automationRequirements: string[];
+  existingSoftwareTools: string[];
+  teamInvitations: {
+    email: string;
+    role: WorkspaceRole;
+    department: string;
+  }[];
+}
+
+export interface NotificationItem {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  type:
+    | 'task_assigned'
+    | 'workflow_completed'
+    | 'workflow_failed'
+    | 'approval_request'
+    | 'approval_result'
+    | 'invitation'
+    | 'role_changed'
+    | 'system';
+  title: string;
+  message: string;
+  read: boolean;
+  archived: boolean;
+  linkSection?: NavSection;
+  createdAtMs: number;
+}
+
 export interface UserProfile {
   uid: string;
+  email?: string;
   displayName: string;
-  role: UserRole;
+  jobTitle?: string;
+  professionalBackground?: string;
+  role: WorkspaceRole;
   department: string;
   organizationName: string;
   voiceLanguage: string;
@@ -53,6 +153,15 @@ export interface UserProfile {
   requireApprovalForExternal: boolean;
   notifyApprovals: boolean;
   notifyFailures: boolean;
+  activeWorkspaceId?: string;
+  onboardingCompleted?: boolean;
+  onboardingType?: WorkspaceType;
+  welcomeSeen?: boolean;
+  tutorialCompleted?: boolean;
+  tutorialStep?: number;
+  themePreference?: 'light' | 'dark' | 'system';
+  timezone?: string;
+  dateFormat?: string;
   createdAt?: unknown;
   updatedAt?: unknown;
 }
@@ -60,6 +169,7 @@ export interface UserProfile {
 export interface Workflow {
   id: string;
   ownerId: string;
+  workspaceId?: string;
   code: string;
   title: string;
   description: string;
@@ -81,6 +191,7 @@ export interface Workflow {
 export interface TaskItem {
   id: string;
   ownerId: string;
+  workspaceId?: string;
   workflowId: string;
   code: string;
   title: string;
@@ -101,6 +212,7 @@ export interface TaskItem {
 export interface KnowledgeDoc {
   id: string;
   ownerId: string;
+  workspaceId?: string;
   title: string;
   fileName: string;
   fileType: 'pdf' | 'docx' | 'txt' | 'md';
@@ -116,6 +228,7 @@ export interface KnowledgeDoc {
 export interface ApprovalItem {
   id: string;
   ownerId: string;
+  workspaceId?: string;
   workflowId: string;
   workflowTitle: string;
   actionType: string;
@@ -135,6 +248,7 @@ export interface ApprovalItem {
 export interface IntegrationItem {
   id: string;
   ownerId: string;
+  workspaceId?: string;
   key: string;
   name: string;
   category: IntegrationCategory;
@@ -152,6 +266,7 @@ export interface IntegrationItem {
 export interface AuditLogItem {
   id: string;
   ownerId: string;
+  workspaceId?: string;
   workflowId: string;
   workflowTitle: string;
   eventType: string;
@@ -166,8 +281,9 @@ export interface AuditLogItem {
 export interface TeamMember {
   id: string;
   ownerId: string;
+  workspaceId?: string;
   name: string;
-  role: UserRole;
+  role: WorkspaceRole;
   department: string;
   status: 'active' | 'invited';
   createdAtMs: number;
