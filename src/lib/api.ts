@@ -35,6 +35,17 @@ async function getAuthHeaders(extra?: Record<string, string>): Promise<Record<st
   };
 }
 
+export async function apiGetPublic<T>(url: string): Promise<T> {
+  const resp = await fetch(url, { method: 'GET' });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(
+      typeof data?.error === 'string' ? data.error : `Request failed (${resp.status})`
+    );
+  }
+  return data as T;
+}
+
 export async function apiPostPublic<T>(url: string, body: unknown): Promise<T> {
   const resp = await fetch(url, {
     method: 'POST',
@@ -119,6 +130,22 @@ export async function apiUploadFile<T>(url: string, file: File): Promise<T> {
   if (!resp.ok) {
     throw new Error(
       typeof data?.error === 'string' ? data.error : `Upload failed (${resp.status})`
+    );
+  }
+  return data as T;
+}
+
+export async function apiPostFormData<T>(url: string, formData: FormData): Promise<T> {
+  const headers = await getAuthHeaders();
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(
+      typeof data?.error === 'string' ? data.error : `Request failed (${resp.status})`
     );
   }
   return data as T;

@@ -45,9 +45,13 @@
   background: rgba(115, 115, 115, 0.5);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 @keyframes voiceWave {
   0%, 100% {
-    transform: scaleY(0.35);
+    transform: scaleY(0.28);
   }
   50% {
     transform: scaleY(1);
@@ -55,6 +59,54 @@
 }
 
 .animate-voice-bar {
-  animation: voiceWave 0.9s ease-in-out infinite;
+  animation: voiceWave 0.95s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   transform-origin: center;
+  will-change: transform;
+}
+
+@keyframes flowstateMarquee {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: flowstateMarquee 32s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 10%,
+    black 90%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 10%,
+    black 90%,
+    transparent 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-marquee,
+  .animate-voice-bar {
+    animation: none !important;
+  }
 }

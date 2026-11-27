@@ -6,7 +6,7 @@ import mammoth from 'mammoth';
 import multer from 'multer';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import {
   dbStore,
   RoleId,
@@ -32,21 +32,50 @@ try {
   firebaseProjectId = '';
 }
 
-// Preferred Gemini models in priority order
-const CANDIDATE_MODELS = [
-  process.env.GEMINI_MODEL,
-  'gemini-4-hydrogen',
-  'gemini-3.1-flash-lite',
-].filter(Boolean) as string[];
+// Free-tier Gemini model configuration (no paid-tier models used)
+const FREE_MODEL_GENERAL = 'gemini-4-hydrogen';
+const FREE_MODEL_FAST = 'gemini-3.1-flash-lite';
+const FREE_MODEL_TRANSCRIBE = 'gemini-3.5-transcribe';
+const FREE_MODEL_TTS = 'gemini-3.8-flash-lite-tts';
+const FREE_MODEL_EMBEDDING = 'gemini-embedding-2';
+
+type FreeModelMode = 'balanced' | 'fast' | 'deep';
+
+function resolveFreeModel(mode?: string): {
+  model: string;
+  thinkingLevel?: ThinkingLevel;
+  label: string;
+} {
+  if (mode === 'fast') {
+    return {
+      model: FREE_MODEL_FAST,
+      thinkingLevel: ThinkingLevel.MINIMAL,
+      label: FREE_MODEL_FAST,
+    };
+  }
+  if (mode === 'deep') {
+    return {
+      model: FREE_MODEL_GENERAL,
+      thinkingLevel: ThinkingLevel.XHIGH,
+      label: `${FREE_MODEL_GENERAL} (deep)`,
+    };
+  }
+  return {
+    model: FREE_MODEL_GENERAL,
+    thinkingLevel: ThinkingLevel.MEDIUM,
+    label: FREE_MODEL_GENERAL,
+  };
+}
 
 // Shared server-side Gemini client (API key stays strictly on the server)
-function getGeminiClient(): GoogleGenAI | null {
+function getGeminiClient(apiVersion?: string): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
     return null;
   }
   return new GoogleGenAI({
     apiKey,
+    ...(apiVersion ? { apiVersion } : {}),
     httpOptions: {
       headers: {
         'User-Agent': 'aistudio-build',
@@ -55,33 +84,76 @@ function getGeminiClient(): GoogleGenAI | null {
   });
 }
 
-// Resilient Gemini generateContent with model fallbacks
+function formatGeminiError(err: unknown): { status: number; message: string } {
+  const raw = err instanceof Error ? err.message : String(err || 'Unknown AI error');
+  const statusMatch =
+    err && typeof err === 'object' && 'status' in err && typeof (err as { status: unknown }).status === 'number'
+      ? (err as { status: number }).status
+      : undefined;
+
+  if (raw.includes('GEMINI_API_KEY_UNAVAILABLE')) {
+    return {
+      status: 503,
+      message: 'Gemini API key is not configured on the server. Ensure GEMINI_API_KEY is set in the runtime environment.',
+    };
+  }
+  if (statusMatch === 401 || statusMatch === 403 || /API_KEY_INVALID|PERMISSION_DENIED/i.test(raw)) {
+    return {
+      status: 502,
+      message: 'Gemini API authentication failed. Please verify the configured Gemini API key has access to free-tier Gemini models.',
+    };
+  }
+  if (statusMatch === 429 || /RESOURCE_EXHAUSTED|quota|rate limit/i.test(raw)) {
+    return {
+      status: 429,
+      message: 'Gemini rate limit reached. Please wait a few seconds and try again, or switch to Fast mode (gemini-3.1-flash-lite).',
+    };
+  }
+  return {
+    status: 500,
+    message: raw.length > 260 ? `${raw.slice(0, 260)}...` : raw,
+  };
+}
+
+// Server-side generateContent helper with free-tier fallback between Hydrogen and Flash-Lite
 async function callGeminiGenerate(
   contents: unknown,
-  config?: Record<string, unknown>
+  config?: Record<string, unknown>,
+  mode: FreeModelMode = 'balanced'
 ): Promise<string> {
   const client = getGeminiClient();
   if (!client) {
     throw new Error('GEMINI_API_KEY_UNAVAILABLE');
   }
 
+  const primary = resolveFreeModel(mode);
+  const attempts: { model: string; thinkingLevel?: ThinkingLevel }[] = [
+    { model: primary.model, thinkingLevel: primary.thinkingLevel },
+    primary.model === FREE_MODEL_GENERAL
+      ? { model: FREE_MODEL_FAST, thinkingLevel: ThinkingLevel.MINIMAL }
+      : { model: FREE_MODEL_GENERAL, thinkingLevel: ThinkingLevel.MEDIUM },
+  ];
+
   let lastErr: unknown = null;
-  for (const model of CANDIDATE_MODELS) {
+  for (const attempt of attempts) {
     try {
+      const mergedConfig: Record<string, unknown> = { ...(config || {}) };
+      if (attempt.thinkingLevel && !mergedConfig.thinkingConfig) {
+        mergedConfig.thinkingConfig = { thinkingLevel: attempt.thinkingLevel };
+      }
       const response = await client.models.generateContent({
-        model,
+        model: attempt.model,
         contents: contents as any,
-        config: config as any,
+        config: mergedConfig as any,
       });
-      if (response && response.text) {
+      if (response && typeof response.text === 'string' && response.text.trim()) {
         return response.text;
       }
     } catch (err) {
       lastErr = err;
-      // Continue to next candidate model
     }
   }
-  throw lastErr || new Error('All Gemini model candidates failed.');
+  throw lastErr || new Error('Gemini request failed.');
 }
 
 // --- Token Verification (Firebase RS256 + Development Session fallback) ---
@@ -236,12 +308,30 @@ async function requireAuth(req: AuthedRequest, res: Response, next: NextFunction
   }
 }
 
-// --- Middleware ---
-app.use(express.json({ limit: '6mb' }));
+// --- Middleware (supports custom domains, iframes, and audio uploads) ---
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
+
+app.use(express.json({ limit: '20mb' }));
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB max
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB max for documents & audio clips
 });
 
 // --- Embedding & Semantic Search Utilities (RAG) ---
@@ -324,7 +414,7 @@ async function embedTexts(texts: string[]): Promise<number[][]> {
       for (let i = 0; i < missingTexts.length; i += 16) {
         const slice = missingTexts.slice(i, i + 16);
         const embedRes = await client.models.embedContent({
-          model: 'text-embedding-004',
+          model: FREE_MODEL_EMBEDDING,
           contents: slice as any,
         });
         const embeddings = embedRes.embeddings ?? [];
@@ -430,280 +520,272 @@ async function semanticRetrieve(
   return picked;
 }
 
-// --- Intelligent Fallback Workflow Synthesizer ---
-function synthesizeFallbackWorkflow(prompt: string, citations: ScoredChunk[]) {
-  const pLower = prompt.toLowerCase();
-  const isAuthIncident = pLower.includes('login') || pLower.includes('auth') || pLower.includes('account') || pLower.includes('password') || pLower.includes('sso');
-  const isBilling = pLower.includes('invoice') || pLower.includes('billing') || pLower.includes('reconciliation') || pLower.includes('finance') || pLower.includes('discrepancy');
-  const isOnboarding = pLower.includes('onboard') || pLower.includes('hire') || pLower.includes('employee') || pLower.includes('provision');
+// --- Domain Role System Instructions & Gemini-4 Structured Schemas ---
+const DOMAIN_ROLE_GUIDANCE: Record<string, string> = {
+  'General Operations':
+    'You are the FLOWSTATE Chief Operations Architect. Coordinate cross-functional workflows, triage blockers, enforce approval governance, and translate voice or text requests into executable operational plans.',
+  'Customer Support':
+    'You are the FLOWSTATE Customer Support & Escalation Lead. Prioritize SLA compliance, rapid incident reproduction, customer communications, Zendesk/ticketing escalations, and root-cause handoffs to Engineering.',
+  'IT Operations':
+    'You are the FLOWSTATE IT Operations & Infrastructure Specialist. Focus on identity/SSO provisioning, endpoint security, access control, incident remediation, and change-management approval gates.',
+  Engineering:
+    'You are the FLOWSTATE Staff Engineering Operations Partner. Structure incident post-mortems, deployment checklists, rollback gates, QA triage, and engineering task dependencies with crisp technical precision.',
+  'Billing & Finance':
+    'You are the FLOWSTATE Finance & Billing Controller Assistant. Enforce invoice reconciliation tolerances, purchase order verification, refund/credit approval thresholds, and ERP audit compliance.',
+  'Sales Ops':
+    'You are the FLOWSTATE Revenue & Sales Operations Strategist. Streamline CRM deal desk workflows, contract reviews, onboarding handoffs, and executive pipeline reporting.',
+  'HR & Onboarding':
+    'You are the FLOWSTATE People & HR Operations Coordinator. Orchestrate new-hire provisioning, policy compliance checks, equipment logistics, and cross-team onboarding checklists.',
+  'Legal & Compliance':
+    'You are the FLOWSTATE Governance, Risk & Compliance Advisor. Highlight regulatory review gates, DPA/contract sign-offs, security questionnaire routing, and strict audit-trail documentation.',
+};
 
-  const today = new Date().toISOString().slice(0, 10);
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+function buildDomainSystemInstruction(opts: {
+  domain: string;
+  workspaceName: string;
+  forceWorkflow: boolean;
+  requireApproval: boolean;
+  ragContext: string;
+  teamContext: string;
+  integrationsContext: string;
+  workspaceStateSummary: string;
+  todayIso: string;
+  tomorrowIso: string;
+}): string {
+  const rolePrompt =
+    DOMAIN_ROLE_GUIDANCE[opts.domain] ||
+    `You are the FLOWSTATE ${opts.domain} Operations Specialist for workspace "${opts.workspaceName}". Tailor every recommendation, task assignee, and approval check specifically to the ${opts.domain} domain.`;
 
-  if (isAuthIncident) {
-    return {
-      assistantMessage:
-        'Analyzed the customer login failure against historical incident playbooks (INC-2026-0412 & INC-2026-0389). I have identified potential SAML IdP clock drift and mobile token rate-limit lockouts. I have prepared a structured P2 escalation workflow with 4 tasks and assigned primary remediation to Identity & Auth Engineering, pending supervisor authorization for external Zendesk ticket creation.',
-      spokenResponse:
-        'I reviewed our incident playbooks for customer login failures. I created a 4-step workflow assigned to Identity and Auth Engineering, with an approval gate for the support ticket.',
-      needsClarification: false,
-      clarifyingQuestions: [],
-      proposedWorkflow: {
-        title: 'Customer Authentication Failure & SSO Remediation',
-        description: 'Resolve customer account login failure by investigating OAuth token validity, checking Redis rate limiter status, and creating an escalation ticket for Tier 2 Identity Engineering.',
-        category: 'Customer Support',
-        priority: 'high' as const,
-        recommendedTeam: 'Identity & Auth Engineering',
-        dueDate: tomorrow,
-        troubleshootingSummary: citations.length > 0
-          ? `Grounded in ${citations[0].docTitle}: Previous incidents (INC-2026-0412, INC-2026-0389) indicate customer IdP certificate rotations and Redis token rate-limit locks as primary root causes.`
-          : 'Standard authentication escalation: verify SAML IdP assertions and Redis session rate limit locks.',
-        steps: [
-          'Inspect Auth Audit Stream for AUTH_RATE_LIMIT_LOCK or SAML 401 response',
-          'Flush stale mobile refresh tokens and verify X.509 thumbprint',
-          'Create Zendesk P2 support ticket and notify enterprise customer account manager',
-          'Issue single-use 15-minute MFA recovery bypass and verify successful customer login',
-        ],
-        tasks: [
-          {
-            title: 'Audit Auth Stream & Verify SAML Certificate Fingerprint',
-            description: 'Check active customer SSO metadata in Identity Gateway and verify certificate thumbprint matches customer IdP.',
-            assignee: 'Alex Chen',
-            department: 'Identity & Auth Engineering',
-            priority: 'critical' as const,
-            dueDate: today,
-            dependencies: [],
-            integrationAction: 'Query Auth Logs & IdP Metadata',
-            requiresApproval: false,
-          },
-          {
-            title: 'Create Zendesk Escalation Ticket & Route to Engineering',
-            description: 'Log Zendesk ticket with priority High, tagged with "auth-login-failure" and attach customer session identifiers.',
-            assignee: 'Sarah Jenkins',
-            department: 'Customer Support',
-            priority: 'high' as const,
-            dueDate: today,
-            dependencies: ['Audit Auth Stream & Verify SAML Certificate Fingerprint'],
-            integrationAction: 'Create Zendesk Ticket (INC-AUTH-ESCALATE)',
-            requiresApproval: true,
-          },
-          {
-            title: 'Clear Redis Token Lockout & Generate Magic Recovery Link',
-            description: 'Execute internal override reset-auth-lockout and dispatch single-use verification email.',
-            assignee: 'Marcus Vance',
-            department: 'Customer Support',
-            priority: 'high' as const,
-            dueDate: tomorrow,
-            dependencies: ['Create Zendesk Escalation Ticket & Route to Engineering'],
-            integrationAction: 'Dispatch Customer Recovery Email',
-            requiresApproval: false,
-          },
-          {
-            title: 'Customer Confirmation & Incident Post-Mortem Logging',
-            description: 'Confirm customer access restoration and update incident playbook with findings.',
-            assignee: 'Marcus Vance',
-            department: 'Customer Support',
-            priority: 'medium' as const,
-            dueDate: tomorrow,
-            dependencies: ['Clear Redis Token Lockout & Generate Magic Recovery Link'],
-            integrationAction: 'Close Support Incident',
-            requiresApproval: false,
-          },
-        ],
-        approvalRequest: {
-          actionType: 'Create Zendesk High-Priority Escalation Ticket',
-          integrationTarget: 'Zendesk Ticketing',
-          riskLevel: 'medium' as const,
-          reason: 'Policy requires Supervisor/Approver sign-off prior to external ticketing integration and engineering assignment.',
-          proposedPayload: JSON.stringify({
-            ticket: {
-              subject: 'Customer Account Login Failure — SSO / Rate-Limit Verification',
-              priority: 'high',
-              tags: ['auth-login-failure', 'flowstate-auto'],
-              assignee_group: 'Identity & Auth Engineering',
-            },
-          }, null, 2),
-        },
-      },
-    };
-  }
+  const workflowRule = opts.forceWorkflow
+    ? `WORKFLOW MODE (REQUIRED): The user explicitly asked to generate an executable workflow. You MUST set "hasWorkflow": true and populate a complete, concrete "proposedWorkflow" tailored to their prompt and domain "${opts.domain}" with 3 to 5 ordered steps and 2 to 5 concrete tasks.`
+    : `DECIDE INTELLIGENTLY WHETHER TO GENERATE A WORKFLOW:
+- If the user is asking a general question, checking workspace status, brainstorming, or chatting casually, answer conversationally and helpfully with "hasWorkflow": false (omit "proposedWorkflow").
+- If the user asks to create, build, draft, design, automate, escalate, triage, onboard, reconcile, or fix an operational process/incident (or asks to update/modify the workflow being discussed), set "hasWorkflow": true and populate a complete, concrete "proposedWorkflow" with 3 to 5 ordered steps and 2 to 5 concrete tasks.`;
 
-  if (isBilling) {
-    return {
-      assistantMessage:
-        'Reviewed the invoice discrepancy against our Billing Reconciliation SOP. Line items exceed the 2% auto-tolerance threshold. I have structured a finance reconciliation workflow and queued a Human-in-the-Loop approval gate for Finance Controller sign-off.',
-      spokenResponse:
-        'The invoice variance exceeds our two percent tolerance. I created an approval workflow for the Finance Controller.',
-      needsClarification: false,
-      clarifyingQuestions: [],
-      proposedWorkflow: {
-        title: 'Vendor Invoice Discrepancy & PO Reconciliation',
-        description: 'Verify purchase order matching, assess 5% variance against tolerance threshold, and obtain Finance Controller approval.',
-        category: 'Billing & Finance',
-        priority: 'high' as const,
-        recommendedTeam: 'Billing & Finance',
-        dueDate: tomorrow,
-        troubleshootingSummary: 'Based on Invoice Reconciliation SOP: Variances above 2% require manual reconciliation and controller authorization before NetSuite sync.',
-        steps: [
-          'Extract line-item data from vendor invoice and match with active Purchase Order',
-          'Document variance rationale and calculate financial impact',
-          'Submit approval request to Finance Controller (Maya Patel)',
-          'Update NetSuite ledger upon approval',
-        ],
-        tasks: [
-          {
-            title: 'NetSuite PO Line Item Reconciliation',
-            description: 'Match unit pricing and quantity received against approved Purchase Order in ERP.',
-            assignee: 'Maya Patel',
-            department: 'Billing & Finance',
-            priority: 'high' as const,
-            dueDate: today,
-            dependencies: [],
-            integrationAction: 'Query NetSuite PO Ledger',
-            requiresApproval: false,
-          },
-          {
-            title: 'Finance Controller Payment Authorization',
-            description: 'Review variance justification and authorize payment release.',
-            assignee: 'Maya Patel',
-            department: 'Billing & Finance',
-            priority: 'high' as const,
-            dueDate: tomorrow,
-            dependencies: ['NetSuite PO Line Item Reconciliation'],
-            integrationAction: 'Authorize NetSuite Invoice Payment',
-            requiresApproval: true,
-          },
-        ],
-        approvalRequest: {
-          actionType: 'Authorize Over-Variance Invoice Payment',
-          integrationTarget: 'NetSuite ERP / Billing',
-          riskLevel: 'high' as const,
-          reason: 'Vendor invoice line total exceeds PO allocation by 5%. Controller approval required by policy.',
-          proposedPayload: JSON.stringify({
-            invoiceId: 'INV-2026-9901',
-            poNumber: 'PO-4482',
-            varianceAmountUsd: 1450.0,
-            approverRole: 'Finance Controller',
-          }, null, 2),
-        },
-      },
-    };
-  }
+  return `${rolePrompt}
 
-  if (isOnboarding) {
-    return {
-      assistantMessage:
-        'Prepared an IT onboarding workflow according to the New Hire IT Provisioning Checklist. Tasks have been created for Google Workspace identity creation, security groups, and equipment provisioning for IT Operations.',
-      spokenResponse:
-        'I generated the employee onboarding workflow with IT provisioning tasks and security group assignments.',
-      needsClarification: false,
-      clarifyingQuestions: [],
-      proposedWorkflow: {
-        title: 'New Senior Engineer IT & Workspace Provisioning',
-        description: 'Coordinate employee provisioning across Google Workspace, Slack, GitHub organization, and hardware logistics.',
-        category: 'IT Operations',
-        priority: 'medium' as const,
-        recommendedTeam: 'IT Operations',
-        dueDate: tomorrow,
-        troubleshootingSummary: 'Grounded in Employee Onboarding IT Checklist: Identity creation, department SSO group assignment, and 2FA enrollment.',
-        steps: [
-          'Provision Google Workspace account and department alias',
-          'Assign GitHub organization seat and team repository permissions',
-          'Issue security keys and workstation tracking in asset inventory',
-        ],
-        tasks: [
-          {
-            title: 'Provision Google Workspace & SSO Identity',
-            description: 'Create user identity, assign primary email, and enroll in Engineering security group.',
-            assignee: 'Elena Rostova',
-            department: 'IT Operations',
-            priority: 'high' as const,
-            dueDate: today,
-            dependencies: [],
-            integrationAction: 'Google Workspace Admin API',
-            requiresApproval: false,
-          },
-          {
-            title: 'GitHub Organization Invite & Team Permissions',
-            description: 'Invite new employee to GitHub enterprise organization and assign to Engineering teams.',
-            assignee: 'Elena Rostova',
-            department: 'IT Operations',
-            priority: 'medium' as const,
-            dueDate: tomorrow,
-            dependencies: ['Provision Google Workspace & SSO Identity'],
-            integrationAction: 'GitHub Enterprise Invite',
-            requiresApproval: true,
-          },
-        ],
-        approvalRequest: {
-          actionType: 'Grant GitHub Enterprise Organization Access',
-          integrationTarget: 'GitHub Enterprise',
-          riskLevel: 'low' as const,
-          reason: 'Requires IT Operations approval for seat allocation and repository write access.',
-          proposedPayload: JSON.stringify({
-            org: 'flowstate-corp',
-            role: 'member',
-            teams: ['engineering-core', 'frontend'],
-          }, null, 2),
-        },
-      },
-    };
-  }
+Workspace: ${opts.workspaceName}
+Active Domain / Department: ${opts.domain}
+Current Date: ${opts.todayIso} | Default Next Due Date: ${opts.tomorrowIso}
+Require Human Approval for External Actions: ${opts.requireApproval ? 'YES' : 'NO'}
 
-  // General operational workflow
-  return {
-    assistantMessage: `I have analyzed your operational request ("${prompt.slice(0, 80)}...") and structured an executable workflow with milestone tasks, assignees, and governance controls.`,
-    spokenResponse: 'I have structured your workflow with actionable tasks and assigned them to the appropriate team.',
-    needsClarification: false,
-    clarifyingQuestions: [],
-    proposedWorkflow: {
-      title: `Operational Action: ${prompt.slice(0, 48).trim()}`,
-      description: prompt.slice(0, 300),
-      category: 'IT Operations',
-      priority: 'medium' as const,
-      recommendedTeam: 'IT Operations',
-      dueDate: tomorrow,
-      troubleshootingSummary: citations.length > 0
-        ? `Informed by ${citations[0].docTitle}`
-        : 'General operational procedure structured according to Flowstate standards.',
-      steps: [
-        'Validate request requirements and resource availability',
-        'Execute core workflow tasks and verify deliverables',
-        'Review outcomes and update operational records',
-      ],
-      tasks: [
-        {
-          title: `Initial Assessment: ${prompt.slice(0, 40)}`,
-          description: 'Review scope and coordinate dependencies.',
-          assignee: 'Marcus Vance',
-          department: 'Customer Support',
-          priority: 'medium' as const,
-          dueDate: today,
-          dependencies: [],
-          integrationAction: 'Task Verification',
-          requiresApproval: false,
+Live Workspace Snapshot:
+${opts.workspaceStateSummary}
+
+Available Teams & Members:
+${opts.teamContext}
+
+Connected Integrations:
+${opts.integrationsContext}
+
+Retrieved Enterprise Knowledge Base Excerpts (RAG):
+${opts.ragContext}
+
+Operating Rules:
+1. Maintain natural multi-turn conversation continuity with prior chat turns.
+2. Ground troubleshooting and policy guidance STRICTLY in the Retrieved Enterprise Knowledge Base Excerpts when relevant; never invent fake ticket IDs, policies, or outages not present in context.
+3. ${workflowRule}
+4. When populating "proposedWorkflow":
+   - Set "category" to "${opts.domain}" unless another department clearly fits better.
+   - Assign tasks to realistic members/teams from Available Teams & Members.
+   - If any step touches external systems (ticketing, email, CRM, ERP, provisioning, production changes) and human approval is enabled, set "hasApprovalGate": true and populate "approvalRequest" with a realistic JSON string in "proposedPayload". Otherwise set "hasApprovalGate": false.
+5. Keep "assistantMessage" clear, structured, and executive-ready (no markdown raw JSON dumps).
+6. Keep "spokenResponse" concise (1 to 3 natural spoken sentences suitable for Text-to-Speech, free of markdown symbols or bullet characters).`;
+}
+
+// Gemini-4 compatible JSON schema (no unsupported nullable flags)
+const WORKFLOW_OBJECT_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING },
+    description: { type: Type.STRING },
+    category: { type: Type.STRING },
+    priority: { type: Type.STRING, enum: ['low', 'medium', 'high', 'critical'] },
+    recommendedTeam: { type: Type.STRING },
+    dueDate: { type: Type.STRING },
+    troubleshootingSummary: { type: Type.STRING },
+    steps: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    tasks: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          description: { type: Type.STRING },
+          assignee: { type: Type.STRING },
+          department: { type: Type.STRING },
+          priority: { type: Type.STRING, enum: ['low', 'medium', 'high', 'critical'] },
+          dueDate: { type: Type.STRING },
+          dependencies: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+          },
+          integrationAction: { type: Type.STRING },
+          requiresApproval: { type: Type.BOOLEAN },
         },
-        {
-          title: 'Workflow Execution & Output Verification',
-          description: 'Complete operational steps and document results.',
-          assignee: 'Alex Chen',
-          department: 'Identity & Auth Engineering',
-          priority: 'medium' as const,
-          dueDate: tomorrow,
-          dependencies: [`Initial Assessment: ${prompt.slice(0, 40)}`],
-          integrationAction: 'Record Execution',
-          requiresApproval: true,
-        },
-      ],
-      approvalRequest: {
-        actionType: 'Confirm Execution of Workflow Tasks',
-        integrationTarget: 'Operations Gateway',
-        riskLevel: 'low' as const,
-        reason: 'Verification of operational changes.',
-        proposedPayload: JSON.stringify({ prompt, timestamp: Date.now() }, null, 2),
+        required: [
+          'title',
+          'description',
+          'assignee',
+          'department',
+          'priority',
+          'dueDate',
+          'dependencies',
+          'integrationAction',
+          'requiresApproval',
+        ],
       },
     },
+    hasApprovalGate: { type: Type.BOOLEAN },
+    approvalRequest: {
+      type: Type.OBJECT,
+      properties: {
+        actionType: { type: Type.STRING },
+        integrationTarget: { type: Type.STRING },
+        riskLevel: { type: Type.STRING, enum: ['low', 'medium', 'high'] },
+        reason: { type: Type.STRING },
+        proposedPayload: { type: Type.STRING },
+      },
+      required: ['actionType', 'integrationTarget', 'riskLevel', 'reason', 'proposedPayload'],
+    },
+  },
+  required: [
+    'title',
+    'description',
+    'category',
+    'priority',
+    'recommendedTeam',
+    'dueDate',
+    'troubleshootingSummary',
+    'steps',
+    'tasks',
+    'hasApprovalGate',
+  ],
+};
+
+const COMMAND_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    assistantMessage: { type: Type.STRING },
+    spokenResponse: { type: Type.STRING },
+    needsClarification: { type: Type.BOOLEAN },
+    clarifyingQuestions: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    hasWorkflow: { type: Type.BOOLEAN },
+    proposedWorkflow: WORKFLOW_OBJECT_SCHEMA,
+  },
+  required: [
+    'assistantMessage',
+    'spokenResponse',
+    'needsClarification',
+    'clarifyingQuestions',
+    'hasWorkflow',
+  ],
+};
+
+const WORKFLOW_ONLY_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    assistantMessage: { type: Type.STRING },
+    spokenResponse: { type: Type.STRING },
+    proposedWorkflow: WORKFLOW_OBJECT_SCHEMA,
+  },
+  required: ['assistantMessage', 'spokenResponse', 'proposedWorkflow'],
+};
+
+function sanitizeProposedWorkflow(raw: any, fallbackDomain: string, tomorrowIso: string) {
+  if (!raw || typeof raw !== 'object' || !raw.title) return null;
+  const validPriorities = ['low', 'medium', 'high', 'critical'];
+  const steps = Array.isArray(raw.steps)
+    ? raw.steps.map((s: unknown) => String(s || '').trim()).filter(Boolean)
+    : [];
+  const tasks = Array.isArray(raw.tasks)
+    ? raw.tasks
+        .filter((t: unknown) => t && typeof t === 'object')
+        .map((t: any, idx: number) => ({
+          title: String(t.title || `Task ${idx + 1}`).trim(),
+          description: String(t.description || '').trim(),
+          assignee: String(t.assignee || fallbackDomain).trim(),
+          department: String(t.department || raw.category || fallbackDomain).trim(),
+          priority: validPriorities.includes(t.priority) ? t.priority : 'medium',
+          dueDate: String(t.dueDate || raw.dueDate || tomorrowIso).trim(),
+          dependencies: Array.isArray(t.dependencies)
+            ? t.dependencies.map((d: unknown) => String(d || '').trim()).filter(Boolean)
+            : [],
+          integrationAction: String(t.integrationAction || 'Internal Workflow Step').trim(),
+          requiresApproval: Boolean(t.requiresApproval),
+        }))
+    : [];
+
+  const validRisks = ['low', 'medium', 'high'];
+  const rawApr = raw.approvalRequest;
+  const approvalRequest =
+    raw.hasApprovalGate !== false && rawApr && typeof rawApr === 'object' && rawApr.actionType
+      ? {
+          actionType: String(rawApr.actionType).trim(),
+          integrationTarget: String(rawApr.integrationTarget || 'Operations Gateway').trim(),
+          riskLevel: validRisks.includes(rawApr.riskLevel) ? rawApr.riskLevel : 'medium',
+          reason: String(rawApr.reason || 'Human authorization required before external execution.').trim(),
+          proposedPayload:
+            typeof rawApr.proposedPayload === 'string'
+              ? rawApr.proposedPayload
+              : JSON.stringify(rawApr.proposedPayload || {}, null, 2),
+        }
+      : null;
+
+  return {
+    title: String(raw.title).trim(),
+    description: String(raw.description || '').trim(),
+    category: String(raw.category || fallbackDomain).trim(),
+    priority: validPriorities.includes(raw.priority) ? raw.priority : 'medium',
+    recommendedTeam: String(raw.recommendedTeam || fallbackDomain).trim(),
+    dueDate: String(raw.dueDate || tomorrowIso).trim(),
+    troubleshootingSummary: String(raw.troubleshootingSummary || '').trim(),
+    steps: steps.length > 0 ? steps : ['Review request scope and verify deliverables'],
+    tasks,
+    approvalRequest,
   };
+}
+
+function buildGeminiChatHistory(
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[] | undefined,
+  latestPrompt: string
+): { role: 'user' | 'model'; parts: { text: string }[] }[] {
+  if (!Array.isArray(conversationHistory) || conversationHistory.length === 0) return [];
+  // Exclude the latest user turn if the client already appended it before calling
+  const trimmed = [...conversationHistory];
+  const last = trimmed[trimmed.length - 1];
+  if (last && last.role === 'user' && last.content.trim() === latestPrompt.trim()) {
+    trimmed.pop();
+  }
+
+  const recent = trimmed.slice(-14);
+  const formatted: { role: 'user' | 'model'; parts: { text: string }[] }[] = [];
+  for (const msg of recent) {
+    const text = String(msg.content || '').trim();
+    if (!text) continue;
+    const role: 'user' | 'model' = msg.role === 'user' ? 'user' : 'model';
+    if (formatted.length === 0 && role !== 'user') {
+      // Gemini chat history must start with a user turn
+      continue;
+    }
+    const prev = formatted[formatted.length - 1];
+    if (prev && prev.role === role) {
+      prev.parts[0].text += `\n\n${text.slice(0, 1200)}`;
+    } else {
+      formatted.push({ role, parts: [{ text: text.slice(0, 1200) }] });
+    }
+  }
+  // Ensure history ends on a model turn before chat.sendMessage sends the next user turn
+  if (formatted.length > 0 && formatted[formatted.length - 1].role === 'user') {
+    formatted.pop();
+  }
+  return formatted;
 }
 
 // --- API Routes ---
@@ -713,9 +795,39 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     service: 'flowstate-api',
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY'),
+    models: {
+      general: FREE_MODEL_GENERAL,
+      fast: FREE_MODEL_FAST,
+      transcribe: FREE_MODEL_TRANSCRIBE,
+      tts: FREE_MODEL_TTS,
+      embedding: FREE_MODEL_EMBEDDING,
+    },
     firebaseProjectId: firebaseProjectId || 'configured-local',
     timestamp: new Date().toISOString(),
   });
+});
+
+// Public Waitlist Routes
+app.get('/api/waitlist/stats', (_req: Request, res: Response) => {
+  try {
+    res.json(dbStore.getWaitlistStats());
+  } catch (err) {
+    sendRouteError(res, err, 500);
+  }
+});
+
+app.post('/api/waitlist', (req: Request, res: Response) => {
+  try {
+    const { email, source } = (req.body || {}) as { email?: string; source?: string };
+    if (typeof email !== 'string' || !email.trim()) {
+      res.status(400).json({ error: 'Please enter a valid email address.' });
+      return;
+    }
+    const result = dbStore.joinWaitlist(email, typeof source === 'string' ? source : 'waitlist_page');
+    res.status(result.alreadyJoined ? 200 : 201).json(result);
+  } catch (err) {
+    sendRouteError(res, err, 400);
+  }
 });
 
 // Helper to send consistent HTTP status errors from dbStore
@@ -1705,58 +1817,42 @@ app.post('/api/rag/ask', requireAuth, async (req: AuthedRequest, res: Response) 
       )
       .join('\n\n---\n\n');
 
-    try {
-      const responseText = await callGeminiGenerate(
-        `Enterprise Knowledge Excerpts:\n${contextBlock}\n\nUser Question: ${question.trim()}`,
-        {
-          systemInstruction:
-            'You are the FLOWSTATE Enterprise Knowledge Assistant. Answer the user question strictly using ONLY the provided Enterprise Knowledge Excerpts. Never invent company policies, ticket numbers, SLAs, or procedures that are not explicitly present in the excerpts. Cite source titles inline when answering.',
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              answer: { type: Type.STRING },
-              grounded: { type: Type.BOOLEAN },
-              usedSourceTitles: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-              },
+    const responseText = await callGeminiGenerate(
+      `Enterprise Knowledge Excerpts:\n${contextBlock}\n\nUser Question: ${question.trim()}`,
+      {
+        systemInstruction:
+          'You are the FLOWSTATE Enterprise Knowledge Assistant. Answer the user question strictly using ONLY the provided Enterprise Knowledge Excerpts. Never invent company policies, ticket numbers, SLAs, or procedures that are not explicitly present in the excerpts. Cite source titles inline when answering.',
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            answer: { type: Type.STRING },
+            grounded: { type: Type.BOOLEAN },
+            usedSourceTitles: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
             },
-            required: ['answer', 'grounded', 'usedSourceTitles'],
           },
-        }
-      );
+          required: ['answer', 'grounded', 'usedSourceTitles'],
+        },
+      },
+      'balanced'
+    );
 
-      const parsed = JSON.parse(responseText.trim());
-      res.json({
-        answer: parsed.answer,
-        grounded: Boolean(parsed.grounded),
-        citations,
-      });
-    } catch {
-      // Grounded fallback answer from excerpts
-      if (citations.length > 0 && citations[0].similarity > 0.1) {
-        res.json({
-          answer: `According to "${citations[0].docTitle}":\n\n${citations[0].excerpt}\n\nRefer to the linked playbook in your workspace knowledge base for full operational details.`,
-          grounded: true,
-          citations,
-        });
-      } else {
-        res.json({
-          answer: 'The uploaded documentation does not contain enough specific information to answer this inquiry conclusively.',
-          grounded: false,
-          citations,
-        });
-      }
-    }
+    const parsed = JSON.parse(responseText.trim());
+    res.json({
+      answer: parsed.answer,
+      grounded: Boolean(parsed.grounded),
+      citations,
+    });
   } catch (err) {
     console.error('RAG Q&A error:', err);
-    const message = err instanceof Error ? err.message : 'Failed to answer knowledge query.';
-    res.status(500).json({ error: message });
+    const formatted = formatGeminiError(err);
+    res.status(formatted.status).json({ error: formatted.message });
   }
 });
 
-// 4. Voice/Text AI Workflow Command Orchestrator
+// 4. Multi-Turn Domain-Aware Gemini Voice/Text Chatbot & Workflow Orchestrator
 app.post('/api/ai/command', requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
     const {
@@ -1764,6 +1860,9 @@ app.post('/api/ai/command', requireAuth, async (req: AuthedRequest, res: Respons
       conversationId,
       inputMode,
       prompt,
+      domain,
+      modelMode,
+      forceWorkflow,
       conversationHistory,
       knowledgeDocs,
       integrations,
@@ -1774,6 +1873,9 @@ app.post('/api/ai/command', requireAuth, async (req: AuthedRequest, res: Respons
       conversationId?: string;
       inputMode?: 'voice' | 'text';
       prompt?: string;
+      domain?: string;
+      modelMode?: FreeModelMode;
+      forceWorkflow?: boolean;
       conversationHistory?: { role: 'user' | 'assistant'; content: string }[];
       knowledgeDocs?: IncomingDoc[];
       integrations?: { name: string; provider: string; category: string; status: string; isSimulated: boolean }[];
@@ -1786,16 +1888,32 @@ app.post('/api/ai/command', requireAuth, async (req: AuthedRequest, res: Respons
       return;
     }
 
-    // Strict tenant isolation: validate membership if workspaceId is supplied
+    const client = getGeminiClient();
+    if (!client) {
+      const formatted = formatGeminiError(new Error('GEMINI_API_KEY_UNAVAILABLE'));
+      res.status(formatted.status).json({ error: formatted.message });
+      return;
+    }
+
+    const activeDomain =
+      typeof domain === 'string' && domain.trim() ? domain.trim().slice(0, 80) : 'General Operations';
+    const selectedMode: FreeModelMode =
+      modelMode === 'fast' || modelMode === 'deep' ? modelMode : 'balanced';
+
+    // Strict tenant isolation: validate membership and load live workspace context
     let scopedDocs: IncomingDoc[] = Array.isArray(knowledgeDocs) ? knowledgeDocs : [];
+    let workspaceName = 'Active Workspace';
     let workspaceWorkflows: { id: string; code: string; title: string; status: string; category: string }[] = [];
-    let workspaceTasks: { id: string; code: string; title: string; status: string }[] = [];
-    let userPermissions: Record<string, boolean> | null = null;
+    let workspaceTasks: { id: string; code: string; title: string; status: string; priority: string }[] = [];
+    let pendingApprovalsCount = 0;
     let activeConvId: string | undefined;
 
     if (workspaceId && typeof workspaceId === 'string') {
-      const authCtx = dbStore.requireWorkspacePermission(req.authUser!.uid, workspaceId);
-      userPermissions = authCtx.permissions;
+      dbStore.requireWorkspacePermission(req.authUser!.uid, workspaceId);
+      const wsSummary = dbStore.listUserWorkspaces(req.authUser!.uid).find((w) => w.workspace.id === workspaceId);
+      if (wsSummary?.workspace?.name) {
+        workspaceName = wsSummary.workspace.name;
+      }
       const wsData = dbStore.getWorkspaceData(workspaceId, req.authUser!.uid);
       scopedDocs = wsData.documents.map((d) => ({
         id: d.id,
@@ -1815,7 +1933,10 @@ app.post('/api/ai/command', requireAuth, async (req: AuthedRequest, res: Respons
         code: t.code,
         title: t.title,
         status: t.status,
+        priority: t.priority,
       }));
+      pendingApprovalsCount = wsData.approvals.filter((a) => a.status === 'pending').length;
+
       const conv = dbStore.getOrCreateConversation(workspaceId, req.authUser!.uid, conversationId);
       activeConvId = conv.id;
       dbStore.appendMessage({
@@ -1827,158 +1948,7 @@ app.post('/api/ai/command', requireAuth, async (req: AuthedRequest, res: Respons
       });
     }
 
-    // Deterministic Intent Classification (Question vs Discussion vs Execute vs Create)
-    const pLower = prompt.trim().toLowerCase();
-    const isQuestion =
-      /^(what|which|list|show|how many|do i have|tell me about)\b/.test(pLower) &&
-      !pLower.includes('create ') &&
-      !pLower.includes('build ');
-    const isExecute = /^(run|execute|start|trigger)\b.*\b(workflow|it|this)\b/.test(pLower);
-    const isDiscussion =
-      !isQuestion &&
-      !isExecute &&
-      (/\b(want to automate|thinking about|help me define|how should|looking to automate)\b/.test(pLower) &&
-        !pLower.includes('create ') &&
-        !pLower.includes('build '));
-
-    const detectedIntent: 'question' | 'discussion' | 'execute_workflow' | 'create_workflow' =
-      isQuestion
-        ? 'question'
-        : isExecute
-        ? 'execute_workflow'
-        : isDiscussion
-        ? 'discussion'
-        : 'create_workflow';
-
-    // Handle pure information retrieval / question directly & accurately without fabricating workflows
-    if (detectedIntent === 'question') {
-      const wfSummary =
-        workspaceWorkflows.length === 0
-          ? 'You currently have 0 workflows in this workspace.'
-          : `You have ${workspaceWorkflows.length} workflow(s) in this workspace:\n` +
-            workspaceWorkflows.map((w) => `• ${w.code}: ${w.title} (${w.status})`).join('\n');
-      const tskSummary =
-        workspaceTasks.length === 0
-          ? 'You have 0 tasks.'
-          : `You also have ${workspaceTasks.length} task(s).`;
-
-      const answer = `${wfSummary}\n\n${tskSummary}`;
-      if (workspaceId && activeConvId) {
-        dbStore.appendMessage({
-          conversationId: activeConvId,
-          workspaceId,
-          role: 'assistant',
-          content: answer,
-          spokenText:
-            workspaceWorkflows.length === 0
-              ? 'You currently have zero workflows in this workspace.'
-              : `You have ${workspaceWorkflows.length} workflows in this workspace.`,
-          metadata: { intent: 'question' },
-        });
-      }
-      res.json({
-        intent: 'question',
-        assistantMessage: answer,
-        spokenResponse:
-          workspaceWorkflows.length === 0
-            ? 'You currently have zero workflows in this workspace.'
-            : `You have ${workspaceWorkflows.length} workflows in this workspace.`,
-        needsClarification: false,
-        clarifyingQuestions: [],
-        proposedWorkflow: null,
-        conversationId: activeConvId,
-        ragCitations: [],
-        trace: [
-          {
-            stage: 'Intent Classification',
-            status: 'completed',
-            detail: 'Identified as read-only workspace query (no workflow created)',
-          },
-          {
-            stage: 'Authorized DB Lookup',
-            status: 'completed',
-            detail: `Retrieved ${workspaceWorkflows.length} workflow(s) and ${workspaceTasks.length} task(s)`,
-          },
-        ],
-      });
-      return;
-    }
-
-    // Handle exploratory discussion without auto-creating a workflow
-    if (detectedIntent === 'discussion') {
-      const msg =
-        'I can help you design that automation. Before I draft a workflow, could you clarify:\n1. What trigger should start this process (voice, manual, or webhook)?\n2. Which team or person should be responsible for the tasks?\n3. Should external actions require human approval?';
-      if (workspaceId && activeConvId) {
-        dbStore.appendMessage({
-          conversationId: activeConvId,
-          workspaceId,
-          role: 'assistant',
-          content: msg,
-          spokenText:
-            'I can help you design that automation. Tell me what triggers it and who should handle the tasks.',
-          metadata: { intent: 'discussion' },
-        });
-      }
-      res.json({
-        intent: 'discussion',
-        assistantMessage: msg,
-        spokenResponse:
-          'I can help you design that automation. Tell me what triggers it and who should handle the tasks.',
-        needsClarification: true,
-        clarifyingQuestions: [
-          'What trigger should start this workflow?',
-          'Which team or person should own the tasks?',
-          'Should external actions require human approval?',
-        ],
-        proposedWorkflow: null,
-        conversationId: activeConvId,
-        ragCitations: [],
-        trace: [
-          {
-            stage: 'Intent Classification',
-            status: 'completed',
-            detail: 'Identified as requirements discussion (awaiting details)',
-          },
-        ],
-      });
-      return;
-    }
-
-    // Handle execution request with strict backend RBAC check
-    if (detectedIntent === 'execute_workflow') {
-      if (userPermissions && !userPermissions['workflow.execute']) {
-        res.status(403).json({
-          error: 'Forbidden: Your role does not have workflow.execute permission.',
-        });
-        return;
-      }
-      const msg =
-        workspaceWorkflows.length === 0
-          ? 'There are no saved workflows in this workspace to execute. Create and save a workflow first.'
-          : `Found ${workspaceWorkflows.length} workflow(s). Select the workflow you want to run in the Workflows tab or confirm its ID to execute safely.`;
-      res.json({
-        intent: 'execute_workflow',
-        assistantMessage: msg,
-        spokenResponse: msg,
-        needsClarification: false,
-        clarifyingQuestions: [],
-        proposedWorkflow: null,
-        conversationId: activeConvId,
-        ragCitations: [],
-        trace: [
-          {
-            stage: 'Permission & Execution Check',
-            status: 'completed',
-            detail: 'Verified workflow.execute authorization',
-          },
-        ],
-      });
-      return;
-    }
-
-    const docs = scopedDocs;
-    const ragCitations = docs.length > 0 ? await semanticRetrieve(prompt.trim(), docs, 4) : [];
-
+    const ragCitations = scopedDocs.length > 0 ? await semanticRetrieve(prompt.trim(), scopedDocs, 4) : [];
     const ragContext =
       ragCitations.length > 0
         ? ragCitations
@@ -1987,12 +1957,12 @@ app.post('/api/ai/command', requireAuth, async (req: AuthedRequest, res: Respons
                 `[Doc ${idx + 1}: ${c.docTitle} | Category: ${c.category} | Score: ${(c.similarity * 100).toFixed(0)}%]\n${c.excerpt}`
             )
             .join('\n\n')
-        : 'No matching enterprise documents found in the Knowledge Base.';
+        : 'No matching documents found in the workspace Knowledge Base.';
 
     const teamContext =
       Array.isArray(teamMembers) && teamMembers.length > 0
         ? teamMembers.map((m) => `${m.name} (${m.role}, ${m.department})`).join('; ')
-        : 'Identity & Auth Engineering, Tier 2 Support Team, IT Operations, Billing Ops';
+        : `${activeDomain} Lead, Operations Manager, Support Engineer`;
 
     const integrationsContext =
       Array.isArray(integrations) && integrations.length > 0
@@ -2002,159 +1972,147 @@ app.post('/api/ai/command', requireAuth, async (req: AuthedRequest, res: Respons
                 `${i.name} [${i.provider} / ${i.category}] - ${i.isSimulated ? 'SIMULATED' : 'LIVE'} (${i.status})`
             )
             .join('; ')
-        : 'Zendesk Ticketing [SIMULATED], Email Notifications [SIMULATED], CRM [SIMULATED]';
+        : 'Ticketing [SIMULATED], Email Notifications [SIMULATED], CRM [SIMULATED]';
 
-    const historyText = Array.isArray(conversationHistory)
-      ? conversationHistory
-          .slice(-8)
-          .map((m) => `${m.role === 'user' ? 'User' : 'FLOWSTATE'}: ${m.content.slice(0, 600)}`)
-          .join('\n')
-      : '';
+    const workspaceStateSummary = [
+      `Workflows (${workspaceWorkflows.length}): ${
+        workspaceWorkflows.length > 0
+          ? workspaceWorkflows
+              .slice(0, 12)
+              .map((w) => `${w.code} "${w.title}" [${w.status}, ${w.category}]`)
+              .join('; ')
+          : 'None yet'
+      }`,
+      `Open Tasks (${workspaceTasks.filter((t) => t.status !== 'completed').length} of ${workspaceTasks.length}): ${
+        workspaceTasks.length > 0
+          ? workspaceTasks
+              .slice(0, 12)
+              .map((t) => `${t.code} "${t.title}" [${t.status}, ${t.priority}]`)
+              .join('; ')
+          : 'None yet'
+      }`,
+      `Pending Approvals: ${pendingApprovalsCount}`,
+    ].join('\n');
 
     const todayIso = new Date().toISOString().slice(0, 10);
     const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 
-    let parsedResult: any = null;
+    const systemInstruction = buildDomainSystemInstruction({
+      domain: activeDomain,
+      workspaceName,
+      forceWorkflow: Boolean(forceWorkflow),
+      requireApproval: requireApproval !== false,
+      ragContext,
+      teamContext,
+      integrationsContext,
+      workspaceStateSummary,
+      todayIso,
+      tomorrowIso,
+    });
 
-    try {
-      const responseText = await callGeminiGenerate(
-        `Conversation History:\n${historyText || '(New session)'}\n\nLatest User Request:\n${prompt.trim()}\n\nRetrieved Enterprise Knowledge Base Excerpts:\n${ragContext}\n\nAvailable Teams & Members:\n${teamContext}\n\nConnected Integrations:\n${integrationsContext}\n\nCurrent Date: ${todayIso} | Default Next Due Date: ${tomorrowIso}\nRequire Human Approval for External Actions: ${requireApproval !== false ? 'YES' : 'NO'}`,
-        {
-          systemInstruction: `You are FLOWSTATE, an enterprise voice-driven workflow automation architect.
-Your job:
-1. Understand the user's operational request and identify its category (Customer Support, IT Operations, Sales Ops, Billing & Finance, HR Management, or Engineering).
-2. Ground your troubleshooting summary and recommendations STRICTLY in the Retrieved Enterprise Knowledge Base Excerpts. Never fabricate company policies, incident IDs, or past outages that are not in the retrieved excerpts.
-3. Generate a complete, actionable proposedWorkflow with 3 to 5 ordered steps, concrete tasks with assignees from Available Teams & Members, realistic dependencies, priorities, and integrationAction labels.
-4. For any action that creates tickets, assigns external teams, sends customer/team emails, or updates CRM records, populate proposedWorkflow.approvalRequest so a human approver reviews it before execution.
-5. Keep assistantMessage crisp, authoritative, and executive-ready. Keep spokenResponse concise (2-3 natural sentences suitable for Text-to-Speech).`,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              assistantMessage: { type: Type.STRING },
-              spokenResponse: { type: Type.STRING },
-              needsClarification: { type: Type.BOOLEAN },
-              clarifyingQuestions: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-              },
-              proposedWorkflow: {
-                type: Type.OBJECT,
-                nullable: true,
-                properties: {
-                  title: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  category: { type: Type.STRING },
-                  priority: { type: Type.STRING, enum: ['low', 'medium', 'high', 'critical'] },
-                  recommendedTeam: { type: Type.STRING },
-                  dueDate: { type: Type.STRING },
-                  troubleshootingSummary: { type: Type.STRING },
-                  steps: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                  },
-                  tasks: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        title: { type: Type.STRING },
-                        description: { type: Type.STRING },
-                        assignee: { type: Type.STRING },
-                        department: { type: Type.STRING },
-                        priority: { type: Type.STRING, enum: ['low', 'medium', 'high', 'critical'] },
-                        dueDate: { type: Type.STRING },
-                        dependencies: {
-                          type: Type.ARRAY,
-                          items: { type: Type.STRING },
-                        },
-                        integrationAction: { type: Type.STRING },
-                        requiresApproval: { type: Type.BOOLEAN },
-                      },
-                      required: [
-                        'title',
-                        'description',
-                        'assignee',
-                        'department',
-                        'priority',
-                        'dueDate',
-                        'dependencies',
-                        'integrationAction',
-                        'requiresApproval',
-                      ],
-                    },
-                  },
-                  approvalRequest: {
-                    type: Type.OBJECT,
-                    nullable: true,
-                    properties: {
-                      actionType: { type: Type.STRING },
-                      integrationTarget: { type: Type.STRING },
-                      riskLevel: { type: Type.STRING, enum: ['low', 'medium', 'high'] },
-                      reason: { type: Type.STRING },
-                      proposedPayload: { type: Type.STRING },
-                    },
-                    required: [
-                      'actionType',
-                      'integrationTarget',
-                      'riskLevel',
-                      'reason',
-                      'proposedPayload',
-                    ],
-                  },
-                },
-                required: [
-                  'title',
-                  'description',
-                  'category',
-                  'priority',
-                  'recommendedTeam',
-                  'dueDate',
-                  'troubleshootingSummary',
-                  'steps',
-                  'tasks',
-                ],
-              },
-            },
-            required: ['assistantMessage', 'spokenResponse', 'needsClarification', 'clarifyingQuestions'],
+    const history = buildGeminiChatHistory(conversationHistory, prompt.trim());
+    const primarySpec = resolveFreeModel(selectedMode);
+    const modelAttempts = [
+      primarySpec,
+      primarySpec.model === FREE_MODEL_GENERAL
+        ? resolveFreeModel('fast')
+        : resolveFreeModel('balanced'),
+    ];
+
+    let rawJsonText = '';
+    let usedModelLabel = primarySpec.label;
+    let lastErr: unknown = null;
+
+    for (const attempt of modelAttempts) {
+      try {
+        const chat = client.chats.create({
+          model: attempt.model,
+          history,
+          config: {
+            systemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema: COMMAND_RESPONSE_SCHEMA,
+            ...(attempt.thinkingLevel
+              ? { thinkingConfig: { thinkingLevel: attempt.thinkingLevel } }
+              : {}),
           },
+        });
+        const response = await chat.sendMessage({
+          message: prompt.trim(),
+        });
+        if (response && typeof response.text === 'string' && response.text.trim()) {
+          rawJsonText = response.text.trim();
+          usedModelLabel = attempt.label;
+          break;
         }
-      );
-      parsedResult = JSON.parse(responseText.trim());
-    } catch {
-      // Fallback synthesizer
-      parsedResult = synthesizeFallbackWorkflow(prompt, ragCitations);
+      } catch (err) {
+        lastErr = err;
+        console.error(`Gemini chat attempt failed (${attempt.model}):`, err);
+      }
     }
+
+    if (!rawJsonText) {
+      const formatted = formatGeminiError(lastErr || new Error('Empty response from Gemini.'));
+      res.status(formatted.status).json({ error: formatted.message });
+      return;
+    }
+
+    let parsedResult: any;
+    try {
+      parsedResult = JSON.parse(rawJsonText);
+    } catch {
+      parsedResult = {
+        assistantMessage: rawJsonText,
+        spokenResponse: rawJsonText.slice(0, 220),
+        needsClarification: false,
+        clarifyingQuestions: [],
+        hasWorkflow: false,
+      };
+    }
+
+    const sanitizedWorkflow =
+      parsedResult.hasWorkflow || forceWorkflow
+        ? sanitizeProposedWorkflow(parsedResult.proposedWorkflow, activeDomain, tomorrowIso)
+        : null;
+
+    const assistantMessage = String(
+      parsedResult.assistantMessage ||
+        (sanitizedWorkflow
+          ? `Prepared the "${sanitizedWorkflow.title}" workflow for ${sanitizedWorkflow.recommendedTeam}.`
+          : 'Response ready.')
+    );
+    const spokenResponse = String(parsedResult.spokenResponse || assistantMessage).slice(0, 500);
+    const clarifyingQuestions = Array.isArray(parsedResult.clarifyingQuestions)
+      ? parsedResult.clarifyingQuestions.map((q: unknown) => String(q || '').trim()).filter(Boolean)
+      : [];
 
     const trace = [
       {
-        stage: 'Intent & Category Analysis',
-        status: 'completed',
-        detail: parsedResult.proposedWorkflow
-          ? `Classified as ${parsedResult.proposedWorkflow.category} (${parsedResult.proposedWorkflow.priority} priority)`
-          : 'Parsed user instruction',
+        stage: `Gemini Model (${usedModelLabel})`,
+        status: 'completed' as const,
+        detail: `Domain role: ${activeDomain} · Multi-turn context (${history.length} prior turns)`,
       },
       {
         stage: 'Enterprise Knowledge Base (RAG)',
-        status: ragCitations.length > 0 ? 'completed' : 'warning',
+        status: ragCitations.length > 0 ? ('completed' as const) : ('warning' as const),
         detail:
           ragCitations.length > 0
-            ? `Retrieved ${ragCitations.length} relevant excerpts (${ragCitations[0].docTitle})`
+            ? `Grounded in ${ragCitations.length} excerpt(s) (${ragCitations[0].docTitle})`
             : 'No matching documents in Knowledge Base',
       },
       {
         stage: 'Workflow & Task Orchestration',
-        status: parsedResult.proposedWorkflow ? 'completed' : 'pending',
-        detail: parsedResult.proposedWorkflow
-          ? `Structured ${parsedResult.proposedWorkflow.tasks?.length || 0} tasks for ${parsedResult.proposedWorkflow.recommendedTeam}`
-          : 'Awaiting clarification',
+        status: sanitizedWorkflow ? ('completed' as const) : ('pending' as const),
+        detail: sanitizedWorkflow
+          ? `Structured ${sanitizedWorkflow.tasks.length} task(s) & ${sanitizedWorkflow.steps.length} step(s) for ${sanitizedWorkflow.recommendedTeam}`
+          : 'Conversational response (no workflow drafted)',
       },
       {
         stage: 'Human Approval Gate',
-        status: parsedResult.proposedWorkflow?.approvalRequest ? 'active' : 'completed',
-        detail: parsedResult.proposedWorkflow?.approvalRequest
-          ? `Approval required for ${parsedResult.proposedWorkflow.approvalRequest.actionType}`
-          : 'No sensitive external action queued',
+        status: sanitizedWorkflow?.approvalRequest ? ('active' as const) : ('completed' as const),
+        detail: sanitizedWorkflow?.approvalRequest
+          ? `Approval required for ${sanitizedWorkflow.approvalRequest.actionType}`
+          : 'No external approval gate needed',
       },
     ];
 
@@ -2163,26 +2121,148 @@ Your job:
         conversationId: activeConvId,
         workspaceId,
         role: 'assistant',
-        content: parsedResult.assistantMessage || '',
-        spokenText: parsedResult.spokenResponse,
+        content: assistantMessage,
+        spokenText: spokenResponse,
         metadata: {
+          modelUsed: usedModelLabel,
+          domain: activeDomain,
           ragCitations,
-          proposedWorkflow: parsedResult.proposedWorkflow || null,
+          proposedWorkflow: sanitizedWorkflow,
           trace,
         },
       });
     }
 
     res.json({
-      ...parsedResult,
+      assistantMessage,
+      spokenResponse,
+      needsClarification: Boolean(parsedResult.needsClarification),
+      clarifyingQuestions,
+      proposedWorkflow: sanitizedWorkflow,
+      modelUsed: usedModelLabel,
+      domain: activeDomain,
       conversationId: activeConvId,
       ragCitations,
       trace,
     });
   } catch (err) {
     console.error('AI command error:', err);
-    const message = err instanceof Error ? err.message : 'Failed to process workflow command.';
-    res.status(500).json({ error: message });
+    const formatted = formatGeminiError(err);
+    res.status(formatted.status).json({ error: formatted.message });
+  }
+});
+
+// 4b. Dedicated AI Workflow Generator (used by Workflows View & New Workflow Modal)
+app.post('/api/ai/generate-workflow', requireAuth, async (req: AuthedRequest, res: Response) => {
+  try {
+    const {
+      workspaceId,
+      prompt,
+      domain,
+      modelMode,
+      requireApproval,
+    } = req.body as {
+      workspaceId?: string;
+      prompt?: string;
+      domain?: string;
+      modelMode?: FreeModelMode;
+      requireApproval?: boolean;
+    };
+
+    if (typeof prompt !== 'string' || !prompt.trim()) {
+      res.status(400).json({ error: 'Please describe the workflow you want to generate.' });
+      return;
+    }
+
+    const activeDomain =
+      typeof domain === 'string' && domain.trim() ? domain.trim().slice(0, 80) : 'General Operations';
+    const selectedMode: FreeModelMode =
+      modelMode === 'fast' || modelMode === 'deep' ? modelMode : 'balanced';
+
+    let workspaceName = 'Active Workspace';
+    let scopedDocs: IncomingDoc[] = [];
+    let teamContext = `${activeDomain} Lead, Operations Specialist`;
+    let integrationsContext = 'Ticketing [SIMULATED], Email Notifications [SIMULATED], CRM [SIMULATED]';
+
+    if (workspaceId && typeof workspaceId === 'string') {
+      dbStore.requireWorkspacePermission(req.authUser!.uid, workspaceId, 'workflow.create');
+      const wsSummary = dbStore.listUserWorkspaces(req.authUser!.uid).find((w) => w.workspace.id === workspaceId);
+      if (wsSummary?.workspace?.name) workspaceName = wsSummary.workspace.name;
+      const wsData = dbStore.getWorkspaceData(workspaceId, req.authUser!.uid);
+      scopedDocs = wsData.documents.map((d) => ({
+        id: d.id,
+        title: d.title,
+        category: d.category,
+        content: d.content,
+      }));
+      if (wsData.members.length > 0) {
+        teamContext = wsData.members
+          .map((m) => `${m.name} (${m.roleId}, ${m.department})`)
+          .join('; ');
+      }
+      if (wsData.integrations.length > 0) {
+        integrationsContext = wsData.integrations
+          .map((i) => `${i.name} [${i.provider} / ${i.category}] (${i.status})`)
+          .join('; ');
+      }
+    }
+
+    const ragCitations = scopedDocs.length > 0 ? await semanticRetrieve(prompt.trim(), scopedDocs, 3) : [];
+    const ragContext =
+      ragCitations.length > 0
+        ? ragCitations.map((c, i) => `[Doc ${i + 1}: ${c.docTitle}]\n${c.excerpt}`).join('\n\n')
+        : 'No matching runbooks in Knowledge Base.';
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
+    const systemInstruction = buildDomainSystemInstruction({
+      domain: activeDomain,
+      workspaceName,
+      forceWorkflow: true,
+      requireApproval: requireApproval !== false,
+      ragContext,
+      teamContext,
+      integrationsContext,
+      workspaceStateSummary: `Generating a new workflow in domain "${activeDomain}".`,
+      todayIso,
+      tomorrowIso,
+    });
+
+    const rawText = await callGeminiGenerate(
+      `Generate a complete, ready-to-execute operational workflow for this request:\n\n${prompt.trim()}`,
+      {
+        systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema: WORKFLOW_ONLY_RESPONSE_SCHEMA,
+      },
+      selectedMode
+    );
+
+    const parsed = JSON.parse(rawText.trim());
+    const proposedWorkflow = sanitizeProposedWorkflow(
+      parsed.proposedWorkflow,
+      activeDomain,
+      tomorrowIso
+    );
+
+    if (!proposedWorkflow) {
+      res.status(502).json({ error: 'Gemini returned an incomplete workflow draft. Please try rephrasing your prompt.' });
+      return;
+    }
+
+    res.json({
+      assistantMessage: String(parsed.assistantMessage || `Generated workflow "${proposedWorkflow.title}".`),
+      spokenResponse: String(parsed.spokenResponse || `Workflow ${proposedWorkflow.title} is ready to review.`),
+      proposedWorkflow,
+      ragCitations,
+      modelUsed: resolveFreeModel(selectedMode).label,
+      domain: activeDomain,
+    });
+  } catch (err) {
+    console.error('AI workflow generation error:', err);
+    const formatted = formatGeminiError(err);
+    res.status(formatted.status).json({ error: formatted.message });
   }
 });
 
@@ -2227,54 +2307,157 @@ app.post('/api/integrations/execute', requireAuth, async (req: AuthedRequest, re
   }
 });
 
-// 5b. Audio Transcription Fallback (for browsers like Brave/Firefox where Web Speech API is blocked)
-app.post('/api/ai/transcribe', requireAuth, async (req: AuthedRequest, res: Response) => {
-  try {
-    const { audioBase64, mimeType, language } = req.body as {
-      audioBase64?: string;
-      mimeType?: string;
-      language?: string;
-    };
+// 5b. Audio Transcription via Gemini 3.5 Transcribe (supports multipart file upload OR JSON base64)
+app.post(
+  '/api/ai/transcribe',
+  requireAuth,
+  upload.single('audio'),
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const client = getGeminiClient('v1beta');
+      if (!client) {
+        const formatted = formatGeminiError(new Error('GEMINI_API_KEY_UNAVAILABLE'));
+        res.status(formatted.status).json({ error: formatted.message });
+        return;
+      }
 
-    if (!audioBase64 || typeof audioBase64 !== 'string') {
-      res.status(400).json({ error: 'Audio payload is required.' });
+      let base64Data = '';
+      let cleanMime = 'audio/webm';
+      let language = '';
+
+      if (req.file && req.file.buffer && req.file.buffer.length > 0) {
+        base64Data = req.file.buffer.toString('base64');
+        cleanMime = (req.file.mimetype || req.body?.mimeType || 'audio/webm').split(';')[0].trim();
+        language = typeof req.body?.language === 'string' ? req.body.language : '';
+      } else {
+        const { audioBase64, mimeType, language: bodyLang } = (req.body || {}) as {
+          audioBase64?: string;
+          mimeType?: string;
+          language?: string;
+        };
+        if (!audioBase64 || typeof audioBase64 !== 'string') {
+          res.status(400).json({ error: 'Audio payload is required.' });
+          return;
+        }
+        base64Data = audioBase64;
+        cleanMime = (mimeType || 'audio/webm').split(';')[0].trim();
+        language = typeof bodyLang === 'string' ? bodyLang : '';
+      }
+
+      // Normalize common browser audio MIME variants for Gemini
+      if (cleanMime === 'audio/x-m4a' || cleanMime === 'audio/m4a') {
+        cleanMime = 'audio/mp4';
+      } else if (cleanMime === 'audio/x-wav') {
+        cleanMime = 'audio/wav';
+      } else if (!cleanMime.startsWith('audio/')) {
+        cleanMime = 'audio/webm';
+      }
+
+      const langHint = language ? ` Primary spoken language hint: ${language}.` : '';
+      const audioPart = {
+        inlineData: {
+          mimeType: cleanMime,
+          data: base64Data,
+        },
+      };
+
+      const resp = await client.models.generateContent({
+        model: FREE_MODEL_TRANSCRIBE,
+        contents: {
+          parts: [
+            audioPart,
+            {
+              text: `Transcribe the spoken audio verbatim. Return ONLY the clean plain-text transcript with no quotes, speaker labels, timestamps, or extra commentary. If there is no intelligible speech, return an empty string.${langHint}`,
+            },
+          ],
+        },
+      });
+
+      const transcript = (resp.text || '').trim();
+      res.json({
+        transcript,
+        modelUsed: FREE_MODEL_TRANSCRIBE,
+        mimeType: cleanMime,
+      });
+    } catch (err) {
+      console.error('Gemini audio transcription error:', err);
+      const formatted = formatGeminiError(err);
+      res.status(formatted.status).json({ error: formatted.message });
+    }
+  }
+);
+
+// 5c. Neural Text-to-Speech via Gemini 3.8 Flash-Lite TTS (returns complete WAV audio)
+const ALLOWED_TTS_VOICES = new Set(['Kore', 'Puck', 'Charon', 'Fenrir', 'Zephyr']);
+
+app.post('/api/ai/tts', requireAuth, async (req: AuthedRequest, res: Response) => {
+  try {
+    const client = getGeminiClient('v1beta');
+    if (!client) {
+      const formatted = formatGeminiError(new Error('GEMINI_API_KEY_UNAVAILABLE'));
+      res.status(formatted.status).json({ error: formatted.message });
       return;
     }
 
-    const cleanMime = (mimeType || 'audio/webm').split(';')[0].trim();
-    const langHint = language ? ` Language hint: ${language}.` : '';
-    const transcribeContents = [
-      {
-        inlineData: {
-          mimeType: cleanMime,
-          data: audioBase64,
-        },
-      },
-      {
-        text: `Transcribe the spoken words in this audio clip verbatim. Return ONLY the plain transcript text with no quotes, timestamps, or commentary. If there is no intelligible speech, return an empty string.${langHint}`,
-      },
-    ];
+    const { text, voiceName, style } = (req.body || {}) as {
+      text?: string;
+      voiceName?: string;
+      style?: string;
+    };
 
-    let transcriptText = '';
-    const client = getGeminiClient();
-    if (client) {
-      try {
-        const resp = await client.models.generateContent({
-          model: 'gemini-3.5-transcribe',
-          contents: transcribeContents as any,
-        });
-        transcriptText = resp.text || '';
-      } catch {
-        transcriptText = await callGeminiGenerate(transcribeContents);
-      }
-    } else {
-      throw new Error('GEMINI_API_KEY_UNAVAILABLE');
+    const cleanText = typeof text === 'string' ? text.replace(/[*_`#]+/g, '').trim().slice(0, 1200) : '';
+    if (!cleanText) {
+      res.status(400).json({ error: 'Text is required for speech synthesis.' });
+      return;
     }
 
-    res.json({ transcript: (transcriptText || '').trim() });
+    const resolvedVoice = voiceName && ALLOWED_TTS_VOICES.has(voiceName) ? voiceName : 'Kore';
+    const speechStyle =
+      typeof style === 'string' && style.trim()
+        ? style.trim().slice(0, 120)
+        : 'Clear, natural, calm enterprise assistant';
+
+    const response = await client.models.generateContent({
+      model: FREE_MODEL_TTS,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: cleanText,
+              speechMetadata: {
+                style: speechStyle,
+              },
+            } as any,
+          ],
+        },
+      ],
+      config: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: resolvedVoice },
+          },
+        },
+      },
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!base64Audio) {
+      res.status(502).json({ error: 'Gemini TTS did not return an audio clip.' });
+      return;
+    }
+
+    res.json({
+      audioBase64: base64Audio,
+      mimeType: 'audio/wav',
+      voiceName: resolvedVoice,
+      modelUsed: FREE_MODEL_TTS,
+    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Audio transcription failed.';
-    res.status(500).json({ error: message });
+    console.error('Gemini TTS error:', err);
+    const formatted = formatGeminiError(err);
+    res.status(formatted.status).json({ error: formatted.message });
   }
 });
 
@@ -2283,94 +2466,52 @@ app.post('/api/ai/insight', requireAuth, async (req: AuthedRequest, res: Respons
   try {
     const { summaryStats } = req.body as { summaryStats?: Record<string, unknown> };
 
-    try {
-      const responseText = await callGeminiGenerate(
-        `Analyze these real-time FLOWSTATE operational metrics and produce an executive summary with 3 prioritized recommendations:\n${JSON.stringify(summaryStats || {}, null, 2)}`,
-        {
-          systemInstruction:
-            'You are an enterprise operations analyst inside FLOWSTATE. Base all observations strictly on the provided metrics. Target sections must be one of: command_center, workflows, tasks, knowledge_base, approvals, analytics, integrations.',
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              headline: { type: Type.STRING },
-              summary: { type: Type.STRING },
-              recommendations: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    title: { type: Type.STRING },
-                    impact: { type: Type.STRING },
-                    actionLabel: { type: Type.STRING },
-                    targetSection: {
-                      type: Type.STRING,
-                      enum: [
-                        'command_center',
-                        'workflows',
-                        'tasks',
-                        'knowledge_base',
-                        'approvals',
-                        'analytics',
-                        'integrations',
-                      ],
-                    },
+    const responseText = await callGeminiGenerate(
+      `Analyze these real-time FLOWSTATE operational metrics and produce an executive summary with 3 prioritized recommendations:\n${JSON.stringify(summaryStats || {}, null, 2)}`,
+      {
+        systemInstruction:
+          'You are an enterprise operations analyst inside FLOWSTATE. Base all observations strictly on the provided metrics. Target sections must be one of: command_center, workflows, tasks, knowledge_base, approvals, analytics, integrations.',
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            headline: { type: Type.STRING },
+            summary: { type: Type.STRING },
+            recommendations: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  impact: { type: Type.STRING },
+                  actionLabel: { type: Type.STRING },
+                  targetSection: {
+                    type: Type.STRING,
+                    enum: [
+                      'command_center',
+                      'workflows',
+                      'tasks',
+                      'knowledge_base',
+                      'approvals',
+                      'analytics',
+                      'integrations',
+                    ],
                   },
-                  required: ['title', 'impact', 'actionLabel', 'targetSection'],
                 },
+                required: ['title', 'impact', 'actionLabel', 'targetSection'],
               },
             },
-            required: ['headline', 'summary', 'recommendations'],
           },
-        }
-      );
-      res.json(JSON.parse(responseText.trim()));
-    } catch {
-      // Deterministic operational insight fallback
-      const totalWorkflows = Number(summaryStats?.totalWorkflows || 0);
-      const completedWorkflows = Number(summaryStats?.completedWorkflows || 0);
-      const failedWorkflows = Number(summaryStats?.failedWorkflows || 0);
-      const activeWorkflows =
-        summaryStats?.activeWorkflows !== undefined
-          ? Number(summaryStats.activeWorkflows)
-          : Math.max(0, totalWorkflows - completedWorkflows - failedWorkflows);
-      const pendingApprovals = Number(summaryStats?.pendingApprovals || 0);
-      const openTasks = Number(summaryStats?.openTasks || 0);
-
-      res.json({
-        headline:
-          pendingApprovals > 0
-            ? `${pendingApprovals} Pending Human-in-the-Loop Approval${pendingApprovals === 1 ? '' : 's'} Requiring Authorization`
-            : failedWorkflows > 0
-            ? `${failedWorkflows} Workflow${failedWorkflows === 1 ? '' : 's'} Require Recovery Attention`
-            : 'Operations Running Efficiently with Zero Blocked Workflows',
-        summary: `Current workload contains ${activeWorkflows} active workflow${activeWorkflows === 1 ? '' : 's'} (${totalWorkflows} total) and ${openTasks} open task${openTasks === 1 ? '' : 's'} across connected departments.`,
-        recommendations: [
-          {
-            title: 'Review and clear pending approval gates',
-            impact: 'Prevents external ticketing and ERP execution bottlenecks.',
-            actionLabel: 'Open Approvals Center',
-            targetSection: 'approvals',
-          },
-          {
-            title: 'Run AI Command Center voice incident check',
-            impact: 'Correlates active tickets with historical knowledge base playbooks.',
-            actionLabel: 'Launch Voice Assistant',
-            targetSection: 'command_center',
-          },
-          {
-            title: 'Audit connected integration health & error rates',
-            impact: 'Verifies external simulated connectors and API sync status.',
-            actionLabel: 'Check Integrations',
-            targetSection: 'integrations',
-          },
-        ],
-      });
-    }
+          required: ['headline', 'summary', 'recommendations'],
+        },
+      },
+      'balanced'
+    );
+    res.json(JSON.parse(responseText.trim()));
   } catch (err) {
     console.error('AI insight error:', err);
-    const message = err instanceof Error ? err.message : 'Failed to generate AI operational insight.';
-    res.status(500).json({ error: message });
+    const formatted = formatGeminiError(err);
+    res.status(formatted.status).json({ error: formatted.message });
   }
 });
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Briefcase, Building2, Loader2 } from 'lucide-react';
 import { AiAssistantDrawer } from './components/AiAssistantDrawer';
 import { AnalyticsView } from './components/AnalyticsView';
@@ -14,6 +14,7 @@ import { InsightModal, NewWorkflowModal } from './components/Modals';
 import { OrganizationOnboardingView } from './components/onboarding/OrganizationOnboardingView';
 import { PersonalOnboardingView } from './components/onboarding/PersonalOnboardingView';
 import { PublicWebsite } from './components/public/PublicWebsite';
+import { WaitlistPage } from './components/public/WaitlistPage';
 import { ProductTour } from './components/ProductTour';
 import { SettingsView } from './components/SettingsView';
 import { Sidebar } from './components/Sidebar';
@@ -26,6 +27,7 @@ import { useVoice } from './hooks/useVoice';
 import { apiPostJson } from './lib/api';
 import {
   AgentTraceStep,
+  AiModelMode,
   ApprovalItem,
   CommandMessage,
   NavSection,
@@ -35,6 +37,17 @@ import {
   Workflow,
   WorkspaceType,
 } from './types';
+
+const DEFAULT_OPERATIONAL_DOMAINS = [
+  'General Operations',
+  'Customer Support',
+  'IT Operations',
+  'Engineering',
+  'Billing & Finance',
+  'Sales Ops',
+  'HR & Onboarding',
+  'Legal & Compliance',
+];
 
 function FlowstateApp() {
   const data = useFlowstateData();
@@ -65,11 +78,43 @@ function FlowstateApp() {
   }, [themePreference]);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const [newWorkflowModalOpen, setNewWorkflowModalOpen] = useState(false);
+  const [newWorkflowInitialTab, setNewWorkflowInitialTab] = useState<'ai' | 'manual'>('ai');
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
 
   // Public website & Auth state
-  const [publicMode, setPublicMode] = useState<'landing' | 'login' | 'register'>('landing');
+  const [publicMode, setPublicMode] = useState<'landing' | 'login' | 'register' | 'waitlist'>(() => {
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname === '/waitlist' || window.location.hash === '#waitlist') {
+        return 'waitlist';
+      }
+    }
+    return 'landing';
+  });
   const [viewPublicSite, setViewPublicSite] = useState(false);
+  const [previewWaitlist, setPreviewWaitlist] = useState(false);
+
+  const navigatePublicMode = useCallback((mode: 'landing' | 'login' | 'register' | 'waitlist') => {
+    setPublicMode(mode);
+    if (typeof window !== 'undefined') {
+      const targetPath = mode === 'waitlist' ? '/waitlist' : '/';
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({ publicMode: mode }, '', targetPath);
+      }
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (window.location.pathname === '/waitlist' || window.location.hash === '#waitlist') {
+        setPublicMode('waitlist');
+      } else {
+        setPublicMode('landing');
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // PWA Install state
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -85,6 +130,19 @@ function FlowstateApp() {
   const [isCommandProcessing, setIsCommandProcessing] = useState(false);
   const [commandError, setCommandError] = useState<string | null>(null);
   const [autoSpeak, setAutoSpeak] = useState(true);
+  const [activeDomain, setActiveDomain] = useState<string>('General Operations');
+  const [modelMode, setModelMode] = useState<AiModelMode>('balanced');
+
+  const availableDomains = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...DEFAULT_OPERATIONAL_DOMAINS,
+          ...(data.activeWorkspace?.departments || []).filter(Boolean),
+        ])
+      ),
+    [data.activeWorkspace?.departments]
+  );
 
   const voice = useVoice(data.profile?.voiceLanguage || 'en-US');
 
@@ -149,8 +207,18 @@ function FlowstateApp() {
     }
   }, []);
 
+  const handleClearConversation = useCallback(() => {
+    voice.stopSpeaking();
+    setMessages([]);
+    setCommandError(null);
+  }, [voice]);
+
   const handleSendCommand = useCallback(
-    async (prompt: string, inputMode: 'voice' | 'text') => {
+    async (
+      prompt: string,
+      inputMode: 'voice' | 'text',
+      options?: { forceWorkflow?: boolean }
+    ) => {
       if (!prompt.trim() || isCommandProcessing) return;
       setCommandError(null);
       voice.stopSpeaking();
@@ -161,6 +229,7 @@ function FlowstateApp() {
         content: prompt.trim(),
         timestamp: Date.now(),
         inputMode,
+        domain: activeDomain,
       };
 
       const nextHistory = [...messages, userMsg];
@@ -174,12 +243,17 @@ function FlowstateApp() {
           needsClarification: boolean;
           clarifyingQuestions: string[];
           proposedWorkflow?: ProposedWorkflowDraft | null;
+          modelUsed?: string;
+          domain?: string;
           ragCitations?: RagCitation[];
           trace?: AgentTraceStep[];
         }>('/api/ai/command', {
           workspaceId: data.activeWorkspace?.id,
           inputMode,
           prompt: prompt.trim(),
+          domain: activeDomain,
+          modelMode,
+          forceWorkflow: Boolean(options?.forceWorkflow),
           conversationHistory: nextHistory.map((m) => ({
             role: m.role,
             content: m.content,
@@ -208,9 +282,11 @@ function FlowstateApp() {
         const assistantMsg: CommandMessage = {
           id: `ast-${Date.now()}`,
           role: 'assistant',
-          content: res.assistantMessage || 'Workflow plan prepared for your review.',
+          content: res.assistantMessage || 'Response ready.',
           spokenText: res.spokenResponse || res.assistantMessage,
           timestamp: Date.now(),
+          modelUsed: res.modelUsed,
+          domain: res.domain || activeDomain,
           ragCitations: res.ragCitations || [],
           proposedWorkflow: res.proposedWorkflow ?? null,
           clarifyingQuestions: res.clarifyingQuestions || [],
@@ -220,7 +296,7 @@ function FlowstateApp() {
         setMessages((prev) => [...prev, assistantMsg]);
 
         if (autoSpeak && assistantMsg.spokenText && voice.isTtsSupported) {
-          voice.speak(assistantMsg.spokenText);
+          void voice.speak(assistantMsg.spokenText);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to process AI command.';
@@ -232,6 +308,8 @@ function FlowstateApp() {
     [
       isCommandProcessing,
       messages,
+      activeDomain,
+      modelMode,
       data.activeWorkspace?.id,
       data.knowledgeDocs,
       data.integrations,
@@ -348,7 +426,7 @@ function FlowstateApp() {
     );
   }
 
-  // If user is NOT authenticated: show Public Website or Auth Form
+  // If user is NOT authenticated: show Public Website, Waitlist Page, or Auth Form
   if (!data.user) {
     if (publicMode === 'login' || publicMode === 'register') {
       return (
@@ -360,7 +438,17 @@ function FlowstateApp() {
               data.startOnboarding(type);
             }
           }}
-          onNavigatePublic={() => setPublicMode('landing')}
+          onNavigatePublic={() => navigatePublicMode('landing')}
+        />
+      );
+    }
+
+    if (publicMode === 'waitlist') {
+      return (
+        <WaitlistPage
+          onBackToHome={() => navigatePublicMode('landing')}
+          onSignIn={() => navigatePublicMode('login')}
+          onRegister={() => navigatePublicMode('register')}
         />
       );
     }
@@ -368,8 +456,9 @@ function FlowstateApp() {
     return (
       <>
         <PublicWebsite
-          onSignIn={() => setPublicMode('login')}
-          onRegister={() => setPublicMode('register')}
+          onSignIn={() => navigatePublicMode('login')}
+          onRegister={() => navigatePublicMode('register')}
+          onOpenWaitlist={() => navigatePublicMode('waitlist')}
           onInstallPwa={() => setInstallModalOpen(true)}
           canInstall={Boolean(deferredPrompt)}
         />
@@ -387,21 +476,45 @@ function FlowstateApp() {
     return (
       <div className="relative">
         <div className="bg-blue-600 text-white px-4 py-2.5 text-xs font-semibold flex items-center justify-between z-50 sticky top-0 shadow-sm">
-          <span>Viewing FLOWSTATE Public Overview as {data.profile?.displayName || 'User'}</span>
+          <span>
+            Viewing FLOWSTATE {previewWaitlist ? 'Waitlist' : 'Public Overview'} as{' '}
+            {data.profile?.displayName || 'User'}
+          </span>
           <button
             type="button"
-            onClick={() => setViewPublicSite(false)}
+            onClick={() => {
+              setPreviewWaitlist(false);
+              setViewPublicSite(false);
+            }}
             className="px-3 py-1 rounded-lg bg-white text-blue-600 hover:bg-blue-50 font-bold cursor-pointer"
           >
             Return to Workspace Dashboard
           </button>
         </div>
-        <PublicWebsite
-          onSignIn={() => setViewPublicSite(false)}
-          onRegister={() => setViewPublicSite(false)}
-          onInstallPwa={() => setInstallModalOpen(true)}
-          canInstall={Boolean(deferredPrompt)}
-        />
+        {previewWaitlist ? (
+          <WaitlistPage
+            onBackToHome={() => setPreviewWaitlist(false)}
+            onSignIn={() => {
+              setPreviewWaitlist(false);
+              setViewPublicSite(false);
+            }}
+            onRegister={() => {
+              setPreviewWaitlist(false);
+              setViewPublicSite(false);
+            }}
+          />
+        ) : (
+          <PublicWebsite
+            onSignIn={() => setViewPublicSite(false)}
+            onRegister={() => setViewPublicSite(false)}
+            onOpenWaitlist={() => {
+              setPreviewWaitlist(true);
+              window.scrollTo({ top: 0, behavior: 'auto' });
+            }}
+            onInstallPwa={() => setInstallModalOpen(true)}
+            canInstall={Boolean(deferredPrompt)}
+          />
+        )}
         <InstallPromptModal
           isOpen={installModalOpen}
           onClose={() => setInstallModalOpen(false)}
@@ -691,6 +804,12 @@ function FlowstateApp() {
                 messages={messages}
                 isProcessing={isCommandProcessing}
                 error={commandError}
+                activeDomain={activeDomain}
+                domains={availableDomains}
+                onChangeDomain={setActiveDomain}
+                modelMode={modelMode}
+                onChangeModelMode={setModelMode}
+                onClearConversation={handleClearConversation}
                 onSendCommand={handleSendCommand}
                 onCommitWorkflow={handleCommitWorkflow}
                 onApproveInline={handleApproveInline}
@@ -718,8 +837,17 @@ function FlowstateApp() {
                 selectedWorkflow={selectedWorkflow}
                 onSelectWorkflow={setSelectedWorkflow}
                 onUpdateStatus={data.updateWorkflowStatus}
+                onExecuteWorkflow={data.executeWorkflow}
                 onDeleteWorkflow={data.deleteWorkflow}
-                onOpenNewWorkflow={() => setNewWorkflowModalOpen(true)}
+                onCreateFromTemplate={data.createWorkflowFromDraft}
+                onOpenNewWorkflow={() => {
+                  setNewWorkflowInitialTab('manual');
+                  setNewWorkflowModalOpen(true);
+                }}
+                onOpenAiGenerate={() => {
+                  setNewWorkflowInitialTab('ai');
+                  setNewWorkflowModalOpen(true);
+                }}
               />
             )}
 
@@ -804,20 +932,35 @@ function FlowstateApp() {
             onClose={() => setAiDrawerOpen(false)}
             messages={messages}
             isProcessing={isCommandProcessing}
+            error={commandError}
+            voiceError={voice.voiceError}
+            onClearVoiceError={voice.clearVoiceError}
+            activeDomain={activeDomain}
+            domains={availableDomains}
+            onChangeDomain={setActiveDomain}
+            modelMode={modelMode}
+            onChangeModelMode={setModelMode}
+            onClearConversation={handleClearConversation}
             onSendCommand={handleSendCommand}
             onOpenFullCommandCenter={() => {
               setAiDrawerOpen(false);
               setActiveSection('command_center');
             }}
             isListening={voice.isListening}
+            isTranscribing={voice.isTranscribing}
+            isSpeaking={voice.isSpeaking}
+            recordingSeconds={voice.recordingSeconds}
             onToggleVoice={() => {
               if (voice.isListening) voice.stopListening();
               else {
-                voice.startListening((text: string) => {
+                void voice.startListening((text: string) => {
                   if (text.trim()) void handleSendCommand(text.trim(), 'voice');
                 });
               }
             }}
+            onCancelVoice={voice.cancelListening}
+            onSpeak={(spoken) => void voice.speak(spoken)}
+            onStopSpeaking={voice.stopSpeaking}
             activeWorkspace={data.activeWorkspace}
           />
         )}
@@ -826,9 +969,17 @@ function FlowstateApp() {
       {/* Modals */}
       <NewWorkflowModal
         open={newWorkflowModalOpen}
+        initialTab={newWorkflowInitialTab}
         onClose={() => setNewWorkflowModalOpen(false)}
+        workspaceId={data.activeWorkspace?.id}
         departments={data.activeWorkspace?.departments}
+        domains={availableDomains}
+        activeDomain={activeDomain}
+        modelMode={modelMode}
+        requireApproval={data.profile?.requireApprovalForExternal ?? true}
+        voice={voice}
         onCreateManual={data.createManualWorkflow}
+        onCommitGeneratedWorkflow={data.createWorkflowFromDraft}
         onSwitchToVoice={() => setActiveSection('command_center')}
       />
 

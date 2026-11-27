@@ -337,6 +337,8 @@ export interface AgentTraceStep {
   detail: string;
 }
 
+export type AiModelMode = 'balanced' | 'fast' | 'deep';
+
 export interface CommandMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -344,6 +346,8 @@ export interface CommandMessage {
   spokenText?: string;
   timestamp: number;
   inputMode?: 'voice' | 'text';
+  modelUsed?: string;
+  domain?: string;
   ragCitations?: RagCitation[];
   proposedWorkflow?: ProposedWorkflowDraft | null;
   clarifyingQuestions?: string[];

@@ -1,34 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiPostJson } from '../lib/api';
-
-interface SpeechRecognitionEventLike {
-  resultIndex: number;
-  results: {
-    length: number;
-    [index: number]: {
-      isFinal: boolean;
-      0: { transcript: string };
-    };
-  };
-}
-
-interface SpeechRecognitionErrorEventLike {
-  error: string;
-}
-
-interface SpeechRecognitionInstance {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-}
-
-type SpeechRecognitionCtor = new () => SpeechRecognitionInstance;
+import { apiPostFormData, apiPostJson } from '../lib/api';
 
 export const SUPPORTED_VOICE_LANGUAGES = [
   { code: 'en-US', label: 'English (US)' },
@@ -40,18 +11,15 @@ export const SUPPORTED_VOICE_LANGUAGES = [
   { code: 'ja-JP', label: '日本語' },
 ];
 
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      const commaIdx = result.indexOf(',');
-      resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
-    };
-    reader.onerror = () => reject(new Error('Failed to read recorded audio.'));
-    reader.readAsDataURL(blob);
-  });
-}
+export const GEMINI_TTS_VOICES = [
+  { id: 'Kore', label: 'Kore (Clear)' },
+  { id: 'Puck', label: 'Puck (Upbeat)' },
+  { id: 'Charon', label: 'Charon (Deep)' },
+  { id: 'Fenrir', label: 'Fenrir (Direct)' },
+  { id: 'Zephyr', label: 'Zephyr (Calm)' },
+] as const;
+
+export type GeminiTtsVoice = (typeof GEMINI_TTS_VOICES)[number]['id'];
 
 function getSupportedAudioMimeType(): string {
   if (typeof MediaRecorder === 'undefined') return '';
@@ -68,29 +36,43 @@ function getSupportedAudioMimeType(): string {
   return '';
 }
 
+function getFileExtensionForMime(mimeType: string): string {
+  const clean = mimeType.split(';')[0].toLowerCase();
+  if (clean.includes('mp4') || clean.includes('m4a')) return 'm4a';
+  if (clean.includes('ogg')) return 'ogg';
+  if (clean.includes('wav')) return 'wav';
+  if (clean.includes('mpeg') || clean.includes('mp3')) return 'mp3';
+  return 'webm';
+}
+
 export function useVoice(defaultLang = 'en-US') {
   const [isListening, setIsListening] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isSynthesizingSpeech, setIsSynthesizingSpeech] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [language, setLanguage] = useState(defaultLang);
+  const [ttsVoice, setTtsVoice] = useState<GeminiTtsVoice>('Kore');
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
 
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const onFinalCallbackRef = useRef<((text: string) => void) | null>(null);
-  const preferMediaRecorderRef = useRef<boolean>(false);
+  const cancelRecordingRef = useRef<boolean>(false);
 
-  const isSttSupported =
-    typeof window !== 'undefined' &&
-    Boolean(
-      (window as unknown as { SpeechRecognition?: SpeechRecognitionCtor }).SpeechRecognition ||
-        (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor })
-          .webkitSpeechRecognition
-    );
+  // AudioContext visualizer refs
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
+
+  // Active TTS playback refs
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsRequestSeqRef = useRef<number>(0);
 
   const isMediaRecorderSupported =
     typeof window !== 'undefined' &&
@@ -98,46 +80,184 @@ export function useVoice(defaultLang = 'en-US') {
     Boolean(navigator.mediaDevices?.getUserMedia) &&
     typeof MediaRecorder !== 'undefined';
 
-  const isTtsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  const isTtsSupported = typeof window !== 'undefined';
 
-  const stopSpeaking = useCallback(() => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+  const cleanupVisualizer = useCallback(() => {
+    if (rafRef.current !== null) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
-    setIsSpeaking(false);
+    if (timerRef.current !== null) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    analyserRef.current = null;
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+    setAudioLevel(0);
+    setRecordingSeconds(0);
   }, []);
 
-  const speak = useCallback(
-    (text: string) => {
-      if (!isTtsSupported || !text.trim()) return;
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = language;
-      utterance.rate = 1.02;
-      utterance.pitch = 1.0;
-      utterance.onstart = () => setIsSpeaking(true);
-      utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
-      window.speechSynthesis.speak(utterance);
-    },
-    [isTtsSupported, language]
-  );
-
   const releaseMediaStream = useCallback(() => {
+    cleanupVisualizer();
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
     }
-  }, []);
+  }, [cleanupVisualizer]);
 
-  const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
+  const stopSpeaking = useCallback(() => {
+    ttsRequestSeqRef.current += 1;
+    if (activeAudioRef.current) {
       try {
-        recognitionRef.current.stop();
+        activeAudioRef.current.pause();
+        activeAudioRef.current.currentTime = 0;
+        activeAudioRef.current.src = '';
       } catch {
-        // ignore stop errors when already stopped
+        // ignore
+      }
+      activeAudioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // ignore
       }
     }
+    setIsSynthesizingSpeech(false);
+    setIsSpeaking(false);
+  }, []);
+
+  const speakWithBrowserFallback = useCallback(
+    (text: string) => {
+      if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = language;
+        utterance.rate = 1.02;
+        utterance.onstart = () => setIsSpeaking(true);
+        utterance.onend = () => setIsSpeaking(false);
+        utterance.onerror = () => setIsSpeaking(false);
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        setIsSpeaking(false);
+      }
+    },
+    [language]
+  );
+
+  // Neural TTS powered by Gemini 3.8 Flash-Lite TTS (WAV playback across all domains/browsers)
+  const speak = useCallback(
+    async (text: string) => {
+      const clean = text.replace(/[*_`#]+/g, '').trim();
+      if (!clean) return;
+      stopSpeaking();
+
+      const seq = ttsRequestSeqRef.current;
+      setIsSynthesizingSpeech(true);
+
+      try {
+        const res = await apiPostJson<{ audioBase64: string; mimeType: string }>('/api/ai/tts', {
+          text: clean.slice(0, 1100),
+          voiceName: ttsVoice,
+        });
+
+        if (seq !== ttsRequestSeqRef.current) return;
+
+        if (!res.audioBase64) {
+          setIsSynthesizingSpeech(false);
+          speakWithBrowserFallback(clean);
+          return;
+        }
+
+        const audio = new Audio(`data:${res.mimeType || 'audio/wav'};base64,${res.audioBase64}`);
+        activeAudioRef.current = audio;
+
+        audio.onplay = () => {
+          if (seq === ttsRequestSeqRef.current) {
+            setIsSynthesizingSpeech(false);
+            setIsSpeaking(true);
+          }
+        };
+        audio.onended = () => {
+          if (seq === ttsRequestSeqRef.current) {
+            setIsSpeaking(false);
+            activeAudioRef.current = null;
+          }
+        };
+        audio.onerror = () => {
+          if (seq === ttsRequestSeqRef.current) {
+            setIsSynthesizingSpeech(false);
+            setIsSpeaking(false);
+            activeAudioRef.current = null;
+          }
+        };
+
+        await audio.play();
+      } catch {
+        if (seq !== ttsRequestSeqRef.current) return;
+        setIsSynthesizingSpeech(false);
+        speakWithBrowserFallback(clean);
+      }
+    },
+    [stopSpeaking, ttsVoice, speakWithBrowserFallback]
+  );
+
+  const transcribeAudioBlob = useCallback(
+    async (audioBlob: Blob, resolvedMime: string, onFinalTranscript?: (finalText: string) => void) => {
+      setIsTranscribing(true);
+      setInterimTranscript('Transcribing with Gemini 3.5 Transcribe...');
+      setVoiceError(null);
+
+      try {
+        const ext = getFileExtensionForMime(resolvedMime);
+        const formData = new FormData();
+        formData.append('audio', audioBlob, `voice-command.${ext}`);
+        formData.append('mimeType', resolvedMime);
+        formData.append('language', language);
+
+        const res = await apiPostFormData<{ transcript: string }>('/api/ai/transcribe', formData);
+        const text = (res.transcript || '').trim();
+        setInterimTranscript('');
+
+        if (!text) {
+          setVoiceError('No clear speech detected in the audio. Try speaking closer to the microphone.');
+          return '';
+        }
+
+        setTranscript(text);
+        if (onFinalTranscript) {
+          onFinalTranscript(text);
+        }
+        return text;
+      } catch (err) {
+        setInterimTranscript('');
+        const msg = err instanceof Error ? err.message : 'Failed to transcribe audio.';
+        setVoiceError(msg);
+        return '';
+      } finally {
+        setIsTranscribing(false);
+      }
+    },
+    [language]
+  );
+
+  const transcribeAudioFile = useCallback(
+    async (file: File, onFinalTranscript?: (finalText: string) => void) => {
+      setVoiceError(null);
+      stopSpeaking();
+      const mime = file.type || 'audio/mp3';
+      return transcribeAudioBlob(file, mime, onFinalTranscript);
+    },
+    [stopSpeaking, transcribeAudioBlob]
+  );
+
+  const stopListening = useCallback(() => {
+    cancelRecordingRef.current = false;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
         mediaRecorderRef.current.stop();
@@ -148,23 +268,85 @@ export function useVoice(defaultLang = 'en-US') {
     setIsListening(false);
   }, []);
 
-  const startMediaRecording = useCallback(
+  const cancelListening = useCallback(() => {
+    cancelRecordingRef.current = true;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // ignore
+      }
+    }
+    releaseMediaStream();
+    setIsListening(false);
+    setInterimTranscript('');
+    setVoiceError(null);
+  }, [releaseMediaStream]);
+
+  const startListening = useCallback(
     async (onFinalTranscript?: (finalText: string) => void) => {
+      setVoiceError(null);
+      stopSpeaking();
+
       if (!isMediaRecorderSupported) {
         setVoiceError(
-          'Microphone recording is not supported in this browser. Please type your command below.'
+          'Microphone capture is not supported in this browser. Upload an audio clip or type your command below.'
         );
         return;
       }
 
       onFinalCallbackRef.current = onFinalTranscript || null;
+      cancelRecordingRef.current = false;
       setTranscript('');
-      setInterimTranscript('Recording audio... Click Stop when finished.');
+      setInterimTranscript('Recording... click Stop & Send when finished.');
       audioChunksRef.current = [];
 
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
         mediaStreamRef.current = stream;
+
+        // Live microphone volume meter via Web Audio API
+        try {
+          const AudioCtx =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          const ctx = new AudioCtx();
+          const source = ctx.createMediaStreamSource(stream);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 256;
+          source.connect(analyser);
+          audioCtxRef.current = ctx;
+          analyserRef.current = analyser;
+
+          const dataArr = new Uint8Array(analyser.frequencyBinCount);
+          const tick = () => {
+            if (!analyserRef.current) return;
+            analyserRef.current.getByteTimeDomainData(dataArr);
+            let sum = 0;
+            for (let i = 0; i < dataArr.length; i++) {
+              const norm = (dataArr[i] - 128) / 128;
+              sum += norm * norm;
+            }
+            const rms = Math.sqrt(sum / dataArr.length);
+            setAudioLevel(Math.min(1, rms * 4.5));
+            rafRef.current = window.requestAnimationFrame(tick);
+          };
+          tick();
+        } catch {
+          // Non-critical if AudioContext is restricted
+        }
+
+        const startedAt = Date.now();
+        setRecordingSeconds(0);
+        timerRef.current = window.setInterval(() => {
+          setRecordingSeconds(Math.floor((Date.now() - startedAt) / 1000));
+        }, 500);
 
         const mimeType = getSupportedAudioMimeType();
         const recorder = mimeType
@@ -181,10 +363,11 @@ export function useVoice(defaultLang = 'en-US') {
         recorder.onstop = async () => {
           setIsListening(false);
           releaseMediaStream();
+          const wasCancelled = cancelRecordingRef.current;
           const chunks = audioChunksRef.current;
           audioChunksRef.current = [];
 
-          if (chunks.length === 0) {
+          if (wasCancelled || chunks.length === 0) {
             setInterimTranscript('');
             return;
           }
@@ -192,42 +375,16 @@ export function useVoice(defaultLang = 'en-US') {
           const resolvedMime = recorder.mimeType || mimeType || 'audio/webm';
           const audioBlob = new Blob(chunks, { type: resolvedMime });
 
-          if (audioBlob.size < 800) {
+          if (audioBlob.size < 600) {
             setInterimTranscript('');
-            setVoiceError('Recording was too short. Tap the mic, speak clearly, then tap Stop.');
+            setVoiceError('Recording was too short. Tap the mic, speak clearly, then click Stop & Send.');
             return;
           }
 
-          setIsTranscribing(true);
-          setInterimTranscript('Transcribing your voice command...');
-          try {
-            const audioBase64 = await blobToBase64(audioBlob);
-            const res = await apiPostJson<{ transcript: string }>('/api/ai/transcribe', {
-              audioBase64,
-              mimeType: resolvedMime,
-              language,
-            });
-            const text = (res.transcript || '').trim();
-            setInterimTranscript('');
-            if (!text) {
-              setVoiceError('No speech detected in the recording. Please try again.');
-              return;
-            }
-            setTranscript(text);
-            if (onFinalCallbackRef.current) {
-              onFinalCallbackRef.current(text);
-            }
-          } catch (err) {
-            setInterimTranscript('');
-            setVoiceError(
-              err instanceof Error ? err.message : 'Failed to transcribe voice recording.'
-            );
-          } finally {
-            setIsTranscribing(false);
-          }
+          await transcribeAudioBlob(audioBlob, resolvedMime, onFinalCallbackRef.current || undefined);
         };
 
-        recorder.start();
+        recorder.start(250);
         setIsListening(true);
       } catch (err) {
         releaseMediaStream();
@@ -236,130 +393,21 @@ export function useVoice(defaultLang = 'en-US') {
         const msg = err instanceof Error ? err.message : '';
         if (msg.toLowerCase().includes('denied') || msg.toLowerCase().includes('notallowed')) {
           setVoiceError(
-            'Microphone access was denied. Allow microphone permissions in your browser settings.'
+            'Microphone access was denied. Please allow microphone permission in your browser or upload an audio clip.'
           );
         } else {
-          setVoiceError('Could not access microphone. Check your audio input device and permissions.');
-        }
-      }
-    },
-    [isMediaRecorderSupported, language, releaseMediaStream]
-  );
-
-  const startListening = useCallback(
-    (onFinalTranscript?: (finalText: string) => void) => {
-      setVoiceError(null);
-      stopSpeaking();
-
-      const isBrave =
-        typeof navigator !== 'undefined' &&
-        Boolean((navigator as unknown as { brave?: unknown }).brave);
-
-      // Brave blocks Google's Web Speech API servers; use MediaRecorder + Gemini transcription directly
-      if (isBrave || preferMediaRecorderRef.current || !isSttSupported) {
-        void startMediaRecording(onFinalTranscript);
-        return;
-      }
-
-      const Ctor =
-        (window as unknown as { SpeechRecognition?: SpeechRecognitionCtor }).SpeechRecognition ||
-        (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor })
-          .webkitSpeechRecognition;
-      if (!Ctor) {
-        void startMediaRecording(onFinalTranscript);
-        return;
-      }
-
-      onFinalCallbackRef.current = onFinalTranscript || null;
-      setTranscript('');
-      setInterimTranscript('');
-
-      const recognition = new Ctor();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = language;
-
-      let accumulatedFinal = '';
-      let latestInterim = '';
-      let fellBackToRecorder = false;
-
-      recognition.onresult = (event) => {
-        let interim = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const piece = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            accumulatedFinal += (accumulatedFinal ? ' ' : '') + piece.trim();
-          } else {
-            interim += piece;
-          }
-        }
-        latestInterim = interim.trim();
-        setTranscript(accumulatedFinal);
-        setInterimTranscript(interim);
-      };
-
-      recognition.onerror = (event) => {
-        if (
-          (event.error === 'network' || event.error === 'service-not-allowed') &&
-          isMediaRecorderSupported
-        ) {
-          // Browser blocked Web Speech network service — seamlessly fall back to MediaRecorder
-          fellBackToRecorder = true;
-          preferMediaRecorderRef.current = true;
-          try {
-            recognition.abort();
-          } catch {
-            // ignore
-          }
-          void startMediaRecording(onFinalTranscript);
-          return;
-        }
-
-        if (event.error === 'not-allowed') {
           setVoiceError(
-            'Microphone access was denied. Allow microphone permissions in your browser settings to use voice commands.'
+            'Could not access microphone. Check your audio device permissions or upload an audio clip.'
           );
-        } else if (event.error === 'no-speech') {
-          setVoiceError('No speech detected. Click the microphone and speak clearly.');
-        } else if (event.error !== 'aborted') {
-          setVoiceError(`Voice input error: ${event.error}`);
         }
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        if (fellBackToRecorder) return;
-        setIsListening(false);
-        const finalCombined = [accumulatedFinal.trim(), latestInterim].filter(Boolean).join(' ').trim();
-        setInterimTranscript('');
-        if (finalCombined) {
-          setTranscript(finalCombined);
-          if (onFinalCallbackRef.current) {
-            onFinalCallbackRef.current(finalCombined);
-          }
-        }
-      };
-
-      recognitionRef.current = recognition;
-      try {
-        recognition.start();
-        setIsListening(true);
-      } catch {
-        void startMediaRecording(onFinalTranscript);
       }
     },
-    [isMediaRecorderSupported, isSttSupported, language, startMediaRecording, stopSpeaking]
+    [isMediaRecorderSupported, releaseMediaStream, stopSpeaking, transcribeAudioBlob]
   );
 
   useEffect(() => {
     return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.abort();
-        } catch {
-          // ignore
-        }
-      }
+      cancelRecordingRef.current = true;
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         try {
           mediaRecorderRef.current.stop();
@@ -368,25 +416,30 @@ export function useVoice(defaultLang = 'en-US') {
         }
       }
       releaseMediaStream();
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
+      stopSpeaking();
     };
-  }, [releaseMediaStream]);
+  }, [releaseMediaStream, stopSpeaking]);
 
   return {
     isListening,
     isTranscribing,
+    isSynthesizingSpeech,
     isSpeaking,
+    audioLevel,
+    recordingSeconds,
     transcript,
     interimTranscript,
     voiceError,
     language,
     setLanguage,
-    isSttSupported: isSttSupported || isMediaRecorderSupported,
+    ttsVoice,
+    setTtsVoice,
+    isSttSupported: isMediaRecorderSupported,
     isTtsSupported,
     startListening,
     stopListening,
+    cancelListening,
+    transcribeAudioFile,
     speak,
     stopSpeaking,
     clearVoiceError: () => setVoiceError(null),

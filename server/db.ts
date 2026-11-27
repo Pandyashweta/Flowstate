@@ -395,6 +395,16 @@ export interface DbNotification {
   createdAtMs: number;
 }
 
+export interface DbWaitlistEntry {
+  id: string;
+  email: string;
+  position: number;
+  source: string;
+  createdAtMs: number;
+}
+
+const WAITLIST_BASE_COUNT = 2418;
+
 interface StoreSnapshot {
   users: DbUser[];
   userProfiles: DbUserProfile[];
@@ -412,6 +422,7 @@ interface StoreSnapshot {
   integrations: DbIntegration[];
   auditLogs: DbAuditLog[];
   notifications: DbNotification[];
+  waitlistEntries: DbWaitlistEntry[];
   executedIdempotencyKeys: Record<string, { result: unknown; executedAtMs: number }>;
 }
 
@@ -512,6 +523,7 @@ class FlowstateDatabase {
     integrations: [],
     auditLogs: [],
     notifications: [],
+    waitlistEntries: [],
     executedIdempotencyKeys: {},
   };
 
@@ -559,6 +571,7 @@ class FlowstateDatabase {
           integrations: parsed.integrations || [],
           auditLogs: parsed.auditLogs || [],
           notifications: parsed.notifications || [],
+          waitlistEntries: parsed.waitlistEntries || [],
           executedIdempotencyKeys: parsed.executedIdempotencyKeys || {},
         };
       }
@@ -2063,6 +2076,52 @@ ESCALATION POLICY: Route P1/P2 login failures to Identity & Auth Engineering wit
       n.archived = true;
       this.persist();
     }
+  }
+
+  // --- Public Waitlist Enrollment ---
+  getWaitlistStats(): { totalCount: number; recentSignups: number } {
+    return {
+      totalCount: WAITLIST_BASE_COUNT + this.store.waitlistEntries.length,
+      recentSignups: this.store.waitlistEntries.length,
+    };
+  }
+
+  joinWaitlist(
+    email: string,
+    source = 'waitlist_page'
+  ): { entry: DbWaitlistEntry; alreadyJoined: boolean; totalCount: number } {
+    const normEmail = email.trim().toLowerCase();
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!normEmail || normEmail.length > 200 || !emailRegex.test(normEmail)) {
+      const err = new Error('Please enter a valid email address.') as Error & { statusCode?: number };
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const existing = this.store.waitlistEntries.find((w) => w.email === normEmail);
+    if (existing) {
+      return {
+        entry: existing,
+        alreadyJoined: true,
+        totalCount: WAITLIST_BASE_COUNT + this.store.waitlistEntries.length,
+      };
+    }
+
+    const entry: DbWaitlistEntry = {
+      id: makeId('wtl'),
+      email: normEmail,
+      position: WAITLIST_BASE_COUNT + this.store.waitlistEntries.length + 1,
+      source: String(source || 'waitlist_page').slice(0, 60),
+      createdAtMs: Date.now(),
+    };
+    this.store.waitlistEntries.push(entry);
+    this.persist();
+
+    return {
+      entry,
+      alreadyJoined: false,
+      totalCount: WAITLIST_BASE_COUNT + this.store.waitlistEntries.length,
+    };
   }
 }
 
