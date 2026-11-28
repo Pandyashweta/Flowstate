@@ -9,13 +9,24 @@ import {
 import {
   ArrowRight,
   ArrowUpRight,
+  BarChart3,
+  BookOpen,
   Check,
   CheckCircle2,
+  CheckSquare,
+  ChevronDown,
   Download,
+  Folder,
+  GitBranch,
+  Home,
   Menu,
+  Mic,
   Play,
   Plus,
   Search,
+  Settings,
+  ShieldCheck,
+  Sparkles,
   X,
 } from 'lucide-react';
 import { BLOG_CATEGORIES, BLOG_POSTS, BlogCategory } from './blogData';
@@ -26,7 +37,6 @@ import {
   ARIXO_EASE,
   ARIXO_SNAPPY_SPRING,
   CompactAudioVisualizer,
-  InfiniteLogoTicker,
   MaskedHeadlineLine,
   ScrollReveal,
   ScrollTiltFrame,
@@ -86,7 +96,7 @@ const HERO_WORKFLOWS: MockWorkflowItem[] = [
       { time: '0:04', line: 'Okay so the main thing we need to execute today is the Q4 access log audit...' },
       { time: '0:18', line: 'Cross-check contractor credentials against Section 3 of the Security Runbook.' },
       { time: '0:31', line: 'Assign remediation tasks to Engineering and pause key revocations for Owner review.' },
-      { time: '0:44', line: 'That works — lock that workflow and export the CSV audit receipt once approved.' },
+      { time: '0:44', line: 'That works - lock that workflow and export the CSV audit receipt once approved.' },
     ],
     actions: [
       { id: 'a1', text: 'Audit stale IAM tokens against Security_Runbook_2026.pdf' },
@@ -101,7 +111,7 @@ const HERO_WORKFLOWS: MockWorkflowItem[] = [
   },
   {
     id: 'wf-2',
-    title: 'Weekly Standup — Engineering',
+    title: 'Weekly Standup - Engineering',
     meta: 'Tomorrow · 10:00 AM · Engineering',
     statusLabel: 'Scheduled',
     needsApproval: true,
@@ -125,7 +135,7 @@ const HERO_WORKFLOWS: MockWorkflowItem[] = [
   },
   {
     id: 'wf-3',
-    title: 'Vendor Onboarding — Legal Gate',
+    title: 'Vendor Onboarding - Legal Gate',
     meta: 'Yesterday · 2:30 PM · 62 min · 4 participants',
     statusLabel: 'Done',
     needsApproval: true,
@@ -198,45 +208,45 @@ const ARIXO_FEATURES = [
   {
     id: 'feature-1',
     anchor: 'feature-1',
-    accordionTitle: 'Auto-captures every word',
+    accordionTitle: 'Workflows & Tasks',
     accordionBody:
-      'Speak naturally in the AI Command Center or type a directive. Flowstate transcribes in real time, extracts operational intent, and drafts ordered steps automatically.',
-    cardTitle: 'Auto-captures every word',
+      'Create repeatable operational workflows, assign task owners and priorities, and track execution status across personal and professional work.',
+    cardTitle: 'Workflows & Tasks',
     cardSubtitle:
-      'Flowstate captures spoken or written commands in real time — timestamped, structured, and immediately searchable.',
+      'Organize personal and team tasks alongside structured multi-step workflows.',
     visualType: 'voice' as const,
   },
   {
     id: 'feature-2',
     anchor: 'feature-2',
-    accordionTitle: 'Every policy, grounded',
+    accordionTitle: 'Knowledge Base',
     accordionBody:
-      'Upload PDF, DOCX, and TXT playbooks into your workspace Knowledge Base so every generated workflow cites your exact internal runbooks instead of guessing.',
-    cardTitle: 'Every policy, instantly grounded',
+      'Upload PDF, DOCX, and TXT playbooks into your workspace Knowledge Base so your team always has searchable runbooks and SOPs.',
+    cardTitle: 'Centralized Knowledge Base',
     cardSubtitle:
-      'No more guessing which SOP applies. Flowstate retrieves your uploaded runbooks and attaches verifiable citations before a task is created.',
+      'Keep your SOPs, policies, and operational documents indexed and searchable in one place.',
     visualType: 'rag' as const,
   },
   {
     id: 'feature-3',
     anchor: 'feature-3',
-    accordionTitle: 'Every task, human-approved',
+    accordionTitle: 'Human Approval Gates',
     accordionBody:
       'High-impact steps pause automatically in the Approvals Queue for Owner, Admin, or Manager sign-off under strict 5-tier RBAC boundaries.',
     cardTitle: 'Every sensitive task, human-approved',
     cardSubtitle:
-      'Keep full velocity without risking silent external actions. Reviewers inspect the prompt, steps, and cited runbook in one view before approving.',
+      'Keep full velocity without risking silent actions. Reviewers inspect every detail before approving.',
     visualType: 'approvals' as const,
   },
   {
     id: 'feature-4',
     anchor: 'feature-4',
-    accordionTitle: 'Runs where your team works',
+    accordionTitle: 'Workspaces & Audit Exports',
     accordionBody:
-      'Isolate Personal and Organization workspaces, connect email, webhooks, and REST endpoints, and download complete audit trails in CSV, JSON, or TXT anytime.',
-    cardTitle: 'Runs where your team already works',
+      'Manage personal and professional work in a clean workspace, track analytics, and download complete audit trails in CSV, JSON, or TXT anytime.',
+    cardTitle: 'Clean workspaces & audit exports',
     cardSubtitle:
-      'Install Flowstate directly from your browser as a lightweight app and export immutable execution records in open formats whenever compliance asks.',
+      'Track execution analytics and export immutable records in open formats anytime.',
     visualType: 'exports' as const,
   },
 ];
@@ -257,7 +267,7 @@ const TESTIMONIAL_COLUMNS: TestimonialStory[][] = [
       name: 'Ryan Choi',
       role: 'Head of Operations · Northstar Cloud',
       quote:
-        'I used to split my attention between leading incident calls and typing tickets afterward — and ended up doing both badly. Now I stay present and walk out with grounded workflows and clear owners.',
+        'I used to split my attention between leading incident calls and typing tickets afterward - and ended up doing both badly. Now I stay present and walk out with grounded workflows and clear owners.',
     },
     {
       id: 't2',
@@ -307,7 +317,7 @@ const TESTIMONIAL_COLUMNS: TestimonialStory[][] = [
       name: 'Nadia Petrov',
       role: 'Director of IT · Linden Labs',
       quote:
-        'Stand-ups, vendor reviews, access audits — every single one gets the same treatment. Voice capture, runbook grounding, Owner approval, exportable receipt. It saves us hours every week.',
+        'Stand-ups, vendor reviews, access audits - every single one gets the same treatment. Voice capture, runbook grounding, Owner approval, exportable receipt. It saves us hours every week.',
     },
     {
       id: 't8',
@@ -355,50 +365,43 @@ const EXTRA_TESTIMONIALS: TestimonialStory[] = [
 const FAQ_ITEMS = [
   {
     q: 'Can I use both Personal and Organization workspaces under one account?',
-    a: 'Yes — one account lets you keep a private Personal workspace while creating or joining multiple Organization workspaces with custom logos, user-created departments, and strict tenant isolation.',
+    a: 'Yes - one account lets you keep a private Personal workspace while creating or joining multiple Organization workspaces with user-created departments and strict tenant isolation.',
   },
   {
     q: 'How does Flowstate ground workflows in my internal policies?',
-    a: 'Upload your PDF, DOCX, or TXT playbooks into your workspace Knowledge Base. Every time you speak or type an instruction, Flowstate retrieves relevant policy passages from your workspace and cites them directly inside the drafted workflow.',
+    a: 'Upload PDF, DOCX, or TXT playbooks into your workspace Knowledge Base. Our Python RAG backend extracts document text, retrieves relevant policy passages, and cites them directly inside every drafted workflow.',
   },
   {
     q: 'Do sensitive workflows run without human authorization?',
-    a: 'No — sensitive or external steps automatically pause inside the Approvals Queue so Owners, Admins, or Managers can review the full prompt, steps, and cited runbook before clicking Approve or Reject.',
+    a: 'No - sensitive steps automatically pause inside the Approvals Queue so Owners, Admins, or Managers can review the full prompt, steps, and cited runbook before clicking Approve or Reject.',
   },
   {
-    q: 'Where does my workspace data go?',
-    a: 'Every record, uploaded document, and audit log is strictly scoped to its workspace ID. We never share documents across tenants or train public models on your workspace playbooks.',
+    q: 'How does the AI Command Center work?',
+    a: 'Powered by our Python AI backend, the Command Center turns natural-language or voice directives into structured workflows, tasks, and operational insights - using Gemini when configured or the built-in Python engine out of the box.',
   },
   {
     q: 'Do new workspaces come filled with fake demo data, and can I export audit logs?',
-    a: 'Every new workspace starts completely clean with zero pre-made tasks or synthetic records. Authorized roles can export full audit histories anytime in CSV, JSON, or TXT formats from Settings.',
+    a: 'Every new workspace starts completely clean with zero pre-made tasks or synthetic records. Authorized roles can export full audit histories anytime in CSV, JSON, or TXT formats from Settings or Analytics.',
   },
-];
-
-const HERO_AVATARS = [
-  { src: '/src/assets/images/waitlist_avatar_founder_1795775960980.jpg', alt: 'Ananya Rao', initials: 'AR' },
-  { src: '/src/assets/images/waitlist_avatar_director_1795775956413.jpg', alt: 'Daniel Keller', initials: 'DK' },
-  { src: '/src/assets/images/waitlist_avatar_designer_1795775956238.jpg', alt: 'Mei Lin', initials: 'ML' },
-  { src: '/src/assets/images/waitlist_avatar_engineer_1795775958069.jpg', alt: 'Marcus Cole', initials: 'MC' },
 ];
 
 const HOW_IT_WORKS_STEPS = [
   {
     num: '01',
-    title: 'Connect your workspace & docs',
-    body: 'Create a clean Personal or Organization workspace in one click. Define your own departments and upload your PDF, DOCX, or TXT playbooks.',
+    title: 'Set up your workspace',
+    body: 'Create a clean workspace for personal and professional work. Organize your groups and upload PDF, DOCX, or TXT playbooks.',
     foot: 'Takes 60 seconds',
   },
   {
     num: '02',
-    title: 'Flowstate listens & drafts',
-    body: 'Speak or type any operational directive in the AI Command Center. Flowstate cites your runbooks, drafts ordered tasks, and routes owners in real time.',
-    foot: 'Fully grounded',
+    title: 'Organize workflows & tasks',
+    body: 'Build repeatable workflows, assign task owners, and track progress across your personal and work queues.',
+    foot: 'Clear ownership',
   },
   {
     num: '03',
-    title: 'Approve & export in 30 seconds',
-    body: 'Review sensitive actions inside the Approvals Queue before execution — then export verifiable CSV, JSON, and TXT audit trails anytime.',
+    title: 'Approve & export anytime',
+    body: 'Review sensitive actions inside the Approvals Queue before execution - then export verifiable CSV, JSON, and TXT audit trails.',
     foot: '100% auditable',
   },
 ];
@@ -619,12 +622,6 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
   const navItems = [
     { key: 'features', label: 'Features', action: () => navigateHomeSection('features'), active: false },
     { key: 'how', label: 'How it works', action: () => navigateHomeSection('how-it-works'), active: false },
-    {
-      key: 'blog',
-      label: 'Blog',
-      action: () => navigateSubPage({ view: 'blog' }),
-      active: subPage.view === 'blog' || subPage.view === 'blog-post',
-    },
     { key: 'waitlist', label: 'Waitlist', action: onOpenWaitlist, active: false },
     {
       key: 'contact',
@@ -801,10 +798,10 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
           <ContactView onRegister={onRegister} onOpenWaitlist={onOpenWaitlist} />
         )}
 
-        {/* MAIN HOME PAGE — KINETIC ARIXO EDITORIAL ARCHITECTURE (PURE WHITE, BLACK FONT, BLACK DOT) */}
+        {/* MAIN HOME PAGE - KINETIC ARIXO EDITORIAL ARCHITECTURE (PURE WHITE, BLACK FONT, BLACK DOT) */}
         {subPage.view === 'home' && (
           <main className="flex-1 bg-white text-black">
-            {/* 1. HERO SECTION — LEFT-ALIGNED MASKED REVEAL + SCROLL-TILT 3-PANE LIVING APP SCREEN */}
+            {/* 1. HERO SECTION - LEFT-ALIGNED MASKED REVEAL + SCROLL-TILT 3-PANE LIVING APP SCREEN */}
             <section className="pt-12 sm:pt-20 pb-16 sm:pb-24 px-6 sm:px-12">
               <div className="max-w-[1280px] mx-auto flex flex-col items-start gap-8">
                 {/* Left-Aligned Header Stack */}
@@ -819,7 +816,7 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
                     <span className="inline-flex items-center justify-center w-5 h-5 rounded-[5px] bg-black text-white font-display font-bold text-[11px]">
                       F
                     </span>
-                    <span>Voice-Driven Enterprise Workflow Automation</span>
+                    <span>Personal &amp; Professional Workspace</span>
                   </motion.div>
 
                   {/* Masked Line-by-Line Editorial Display Headline with Signature Black Dot */}
@@ -827,9 +824,9 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
                     className="font-display font-medium tracking-[-0.045em] leading-[1.03] text-black [text-wrap:balance]"
                     style={{ fontSize: 'clamp(2.85rem, 6.2vw, 5.25rem)' }}
                   >
-                    <MaskedHeadlineLine delay={0.1}>Never write manual</MaskedHeadlineLine>
+                    <MaskedHeadlineLine delay={0.1}>Organize your</MaskedHeadlineLine>
                     <MaskedHeadlineLine delay={0.19}>
-                      workflow tickets again<span className="text-black">.</span>
+                      workflows and tasks<span className="text-black">.</span>
                     </MaskedHeadlineLine>
                   </h1>
 
@@ -840,7 +837,7 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
                     transition={{ duration: 0.65, delay: 0.28, ease: ARIXO_EASE }}
                     className="text-base sm:text-[18px] text-neutral-600 font-normal leading-[1.55] max-w-[540px]"
                   >
-                    Flowstate captures your voice or text commands, checks your runbooks, and delivers structured workflows, assigned tasks, and approval gates — before you even close the tab.
+                    Manage personal and professional tasks, structured workflows, knowledge base documents, and approvals in one clean dashboard.
                   </motion.p>
 
                   {/* CTA Buttons Row with Spring Tactility */}
@@ -861,307 +858,251 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
                       <span>Try Flowstate free</span>
                       <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" />
                     </motion.button>
-                    <motion.button
-                      type="button"
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.97 }}
-                      transition={ARIXO_SNAPPY_SPRING}
-                      onClick={() => navigateHomeSection('how-it-works')}
-                      className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-white hover:bg-neutral-100 text-black border border-black/15 text-[14px] font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                    >
-                      <span>See how it works</span>
-                    </motion.button>
-                    <button
-                      type="button"
-                      onClick={onInstallPwa}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-3 rounded-lg text-neutral-600 hover:text-black text-[13px] font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Install app</span>
-                    </button>
-                  </motion.div>
-
-                  {/* Credibility Stack (Interactive Avatar Fan on Hover) */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 14 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.65, delay: 0.44, ease: ARIXO_EASE }}
-                    className="group/avatars flex items-center gap-3 pt-1"
-                  >
-                    <div className="flex items-center -space-x-2 group-hover/avatars:-space-x-1 transition-all duration-300">
-                      {HERO_AVATARS.map((av) => (
-                        <img
-                          key={av.alt}
-                          src={av.src}
-                          alt={av.alt}
-                          referrerPolicy="no-referrer"
-                          className="w-6 h-6 rounded-full object-cover grayscale ring-2 ring-white transition-transform duration-300 hover:scale-110 hover:z-10"
-                        />
-                      ))}
-                    </div>
-                    <span className="text-[13px] text-neutral-600">
-                      <strong className="font-medium text-black tabular-nums">4,200+</strong> teams already use Flowstate
-                    </span>
+                    {false && (
+                      <button
+                        type="button"
+                        onClick={onInstallPwa}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-3 rounded-lg text-neutral-600 hover:text-black text-[13px] font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Install app</span>
+                      </button>
+                    )}
                   </motion.div>
                 </div>
 
-                {/* ARIXO SIGNATURE ELEVATED 3-PANE BROWSER UI SCREEN (Scroll-Linked 3D Perspective Lift + Living Motion) */}
+                {/* FLOWSTATE MAIN DASHBOARD INTERACTIVE SHOWCASE */}
                 <ScrollTiltFrame className="w-full mt-4">
                   <div className="w-full rounded-2xl border border-black/[0.09] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.045),0_28px_84px_rgba(0,0,0,0.08)] overflow-hidden">
                     {/* Browser Header Bar */}
-                    <div className="h-11 px-4 border-b border-black/[0.08] bg-[#FAFAFA] flex items-center justify-between gap-4">
+                    <div className="h-10 px-4 border-b border-[#E5E5E5] bg-[#FAFAFA] flex items-center justify-between gap-4">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full bg-black" />
                         <span className="w-2.5 h-2.5 rounded-full bg-neutral-300" />
                         <span className="w-2.5 h-2.5 rounded-full bg-neutral-300" />
                       </div>
-                      <div className="px-4 py-1 rounded-md bg-white border border-black/[0.07] text-[11px] font-mono text-neutral-500">
-                        app.flowstate.ai / workflows
+                      <div className="px-4 py-1 rounded-md bg-white border border-[#E5E5E5] text-[11px] font-mono text-neutral-500">
+                        app.flowstate.ai / overview
                       </div>
                       <div className="hidden sm:flex items-center gap-2 text-[11px] font-mono text-neutral-500 tabular-nums">
-                        <CompactAudioVisualizer bars={5} height={11} active />
+                        <CompactAudioVisualizer bars={4} height={10} active />
                         <span>{formatLiveElapsed(liveSeconds)}</span>
                       </div>
                     </div>
 
-                    {/* Main 3-Column Interactive App Screen */}
-                    <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[530px]">
-                      {/* Left Interactive Sidebar */}
-                      <aside className="hidden lg:flex lg:col-span-2 border-r border-black/[0.07] bg-[#FAFAFA] p-4 flex-col justify-between text-xs">
-                        <div className="space-y-6">
-                          <div>
-                            <div className="text-[11px] font-medium text-neutral-400 px-2.5 mb-2">
-                              Workspace
+                    {/* Real Flowstate App Shell: Sidebar + TopBar + DashboardView */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[540px] text-left">
+                      {/* Left Software Sidebar */}
+                      <aside className="hidden lg:flex lg:col-span-3 border-r border-[#E5E5E5] bg-[#FAFAFA] flex-col justify-between select-none">
+                        <div>
+                          {/* Workspace Header */}
+                          <div className="h-11 px-3 flex items-center justify-between border-b border-[#E5E5E5]">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <img
+                                src="/icons/favicon_io/apple-touch-icon.png"
+                                alt="FLOWSTATE"
+                                className="w-6 h-6 rounded-md object-cover shrink-0"
+                              />
+                              <span className="font-display font-semibold text-xs text-[#111111] truncate">
+                                Acme Operations
+                              </span>
                             </div>
-                            <div className="space-y-1">
-                              {(
-                                [
-                                  { id: 'All', label: 'All Workflows', count: HERO_WORKFLOWS.length },
-                                  { id: 'Security', label: 'Security', count: 3 },
-                                  { id: 'Engineering', label: 'Engineering', count: 2 },
-                                  { id: 'Approvals', label: 'Approvals', count: 3 },
-                                ] as const
-                              ).map((nav) => {
-                                const active = sidebarFilter === nav.id;
-                                return (
-                                  <button
-                                    key={nav.id}
-                                    type="button"
-                                    onClick={() => setSidebarFilter(nav.id)}
-                                    className={`relative w-full px-2.5 py-2 rounded-lg text-left font-medium flex items-center justify-between cursor-pointer transition-colors ${
-                                      active ? 'text-white' : 'text-neutral-600 hover:text-black'
-                                    }`}
-                                  >
-                                    {active && (
-                                      <motion.span
-                                        layoutId="heroSidebarPill"
-                                        transition={ARIXO_SNAPPY_SPRING}
-                                        className="absolute inset-0 bg-black rounded-lg"
-                                      />
-                                    )}
-                                    <span className="relative z-10 truncate">{nav.label}</span>
-                                    <span
-                                      className={`relative z-10 font-mono text-[10px] tabular-nums ${
-                                        active ? 'text-neutral-300' : 'text-neutral-400'
-                                      }`}
-                                    >
-                                      {nav.count}
-                                    </span>
-                                  </button>
-                                );
-                              })}
-                            </div>
+                            <ChevronDown className="w-3.5 h-3.5 text-[#737373] shrink-0" />
                           </div>
 
-                          <div className="px-2.5 space-y-1.5 text-[11px] text-neutral-500">
-                            <div className="font-medium text-neutral-400">Governance</div>
-                            <div>5-Tier RBAC</div>
-                            <div>RAG Runbooks</div>
-                            <div>Audit Exports</div>
+                          {/* + New workflow */}
+                          <div className="p-2.5">
+                            <button
+                              type="button"
+                              onClick={onRegister}
+                              className="w-full flex items-center gap-2 rounded-md border border-[#E5E5E5] bg-white hover:bg-[#F5F5F5] text-[#111111] text-[11px] font-medium px-2.5 py-1.5 transition-colors cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5 text-[#525252]" />
+                              <span>New workflow</span>
+                            </button>
+                          </div>
+
+                          {/* Main Nav */}
+                          <nav className="px-2 space-y-0.5">
+                            {[
+                              { id: 'All', label: 'Home', icon: Home, active: sidebarFilter === 'All' },
+                              { id: 'Security', label: 'Workflows', icon: GitBranch, active: sidebarFilter === 'Security' },
+                              { id: 'Engineering', label: 'Tasks', icon: CheckSquare, active: sidebarFilter === 'Engineering' },
+                              { id: 'KB', label: 'Knowledge Base', icon: BookOpen, active: false },
+                              { id: 'Approvals', label: 'Approvals', icon: ShieldCheck, badge: 3, active: sidebarFilter === 'Approvals' },
+                              { id: 'Analytics', label: 'Analytics', icon: BarChart3, active: false },
+                            ].map((item) => {
+                              const NavIcon = item.icon;
+                              return (
+                                <button
+                                  key={item.label}
+                                  type="button"
+                                  onClick={() => {
+                                    if (item.id === 'All' || item.id === 'Security' || item.id === 'Engineering' || item.id === 'Approvals') {
+                                      setSidebarFilter(item.id);
+                                    }
+                                  }}
+                                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] transition-colors cursor-pointer ${
+                                    item.active
+                                      ? 'bg-[#ECECEC] text-[#111111] font-semibold'
+                                      : 'text-[#525252] hover:bg-[#F2F2F2] font-medium'
+                                  }`}
+                                >
+                                  <NavIcon className={`w-3.5 h-3.5 shrink-0 ${item.active ? 'text-[#111111]' : 'text-[#737373]'}`} />
+                                  <span className="truncate flex-1 text-left">{item.label}</span>
+                                  {item.badge !== undefined && (
+                                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-full bg-[#111111] text-white tabular-nums font-semibold leading-none">
+                                      {item.badge}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </nav>
+
+                          {/* Departments */}
+                          <div className="px-2 mt-4">
+                            <div className="px-2 mb-1 text-[10px] font-semibold text-[#A3A3A3] uppercase tracking-wider">
+                              Departments
+                            </div>
+                            <div className="space-y-0.5">
+                              {['Customer Support', 'IT Operations', 'Billing & Finance'].map((dept) => (
+                                <div
+                                  key={dept}
+                                  className="flex items-center gap-2 px-2.5 py-1 rounded-md text-[11px] text-[#525252]"
+                                >
+                                  <Folder className="w-3.5 h-3.5 text-[#737373] shrink-0" />
+                                  <span className="truncate">{dept}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
 
-                        <div className="px-2.5 pt-3 border-t border-black/[0.07] text-[11px] text-neutral-400">
-                          Organization · Isolated
+                        {/* Bottom Settings + Role Pill */}
+                        <div>
+                          <div className="border-t border-[#E5E5E5] px-2 py-1.5">
+                            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] text-[#525252] font-medium">
+                              <Settings className="w-3.5 h-3.5 text-[#737373]" />
+                              <span>Settings</span>
+                            </div>
+                          </div>
+                          <div className="px-3 pb-2.5 pt-1.5 border-t border-[#E5E5E5] flex items-center justify-between">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#F2F2F2] text-[10px] font-medium text-[#525252]">
+                              <span>Business</span>
+                              <span className="text-[#A3A3A3]">· Owner</span>
+                            </span>
+                          </div>
                         </div>
                       </aside>
 
-                      {/* Center Workflows List Panel */}
-                      <div className="lg:col-span-5 border-b lg:border-b-0 lg:border-r border-black/[0.07] p-5 sm:p-6 bg-white flex flex-col">
-                        <div className="flex items-baseline justify-between gap-2 mb-4">
-                          <div>
-                            <div className="font-display text-[15px] font-semibold text-black">
-                              {sidebarFilter === 'All' ? 'All Workflows' : `${sidebarFilter} Queue`}
+                      {/* Right Software Main Content (TopBar + DashboardView) */}
+                      <div className="lg:col-span-9 bg-[#FAFAFA] flex flex-col">
+                        {/* Software TopBar */}
+                        <div className="h-11 px-4 border-b border-[#E5E5E5] bg-white flex items-center justify-between gap-3">
+                          <span className="font-display font-semibold text-xs text-[#111111]">
+                            Home
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-[#E5E5E5] bg-[#FAFAFA] text-[11px] text-[#737373] w-44">
+                              <Search className="w-3 h-3 shrink-0" />
+                              <input
+                                type="text"
+                                value={heroSearch}
+                                onChange={(e) => setHeroSearch(e.target.value)}
+                                aria-label="Search demo workflows"
+                                placeholder="Search workflows..."
+                                className="bg-transparent text-[11px] text-[#111111] placeholder:text-[#737373] focus:outline-none w-full"
+                              />
                             </div>
-                            <div className="text-[12px] text-neutral-500 tabular-nums">
-                              November 2026 · {filteredHeroWorkflows.length} shown
+                            <div className="w-6 h-6 rounded-full bg-[#111111] text-white text-[10px] font-bold flex items-center justify-center">
+                              AO
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={onRegister}
-                            className="text-xs font-medium text-black hover:underline cursor-pointer whitespace-nowrap"
-                          >
-                            + New
-                          </button>
                         </div>
 
-                        {/* Live Search Field */}
-                        <div className="relative mb-4">
-                          <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                          <input
-                            type="text"
-                            value={heroSearch}
-                            onChange={(e) => setHeroSearch(e.target.value)}
-                            aria-label="Search demo workflows"
-                            placeholder="Search workflows or runbooks..."
-                            className="w-full h-9 pl-8.5 pr-3 rounded-lg bg-[#F7F7F7] border border-black/[0.07] text-xs text-black placeholder:text-neutral-400 focus:outline-none focus:border-black transition-colors"
-                          />
-                        </div>
-
-                        {/* Interactive Animated Workflows Rows */}
-                        <div className="space-y-1 flex-1">
-                          {filteredHeroWorkflows.map((wf) => {
-                            const selected = wf.id === activeWorkflow.id;
-                            return (
-                              <motion.button
-                                key={wf.id}
-                                layout
+                        {/* Dashboard Body */}
+                        <div className="p-4 sm:p-5 space-y-4 flex-1">
+                          {/* Workspace Header */}
+                          <div className="rounded-xl border border-[#E5E5E5] bg-white p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div>
+                              <h3 className="font-display text-sm sm:text-base font-bold text-[#111111]">
+                                Welcome back, Alex
+                              </h3>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
                                 type="button"
-                                onClick={() => setSelectedWorkflowId(wf.id)}
-                                transition={ARIXO_SNAPPY_SPRING}
-                                className="relative w-full text-left py-3.5 px-3 rounded-xl flex items-start justify-between gap-3 cursor-pointer transition-colors hover:bg-black/[0.025]"
+                                onClick={onRegister}
+                                className="px-3 py-1.5 rounded-lg bg-[#111111] text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
                               >
-                                {selected && (
-                                  <motion.span
-                                    layoutId="heroActiveWorkflowRow"
-                                    transition={ARIXO_SNAPPY_SPRING}
-                                    className="absolute inset-0 bg-[#F4F4F4] border border-black/[0.06] rounded-xl"
-                                  />
-                                )}
-                                <div className="relative z-10 flex items-start gap-2.5 min-w-0">
-                                  <span
-                                    className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 transition-colors ${
-                                      selected ? 'bg-black' : 'bg-neutral-300'
-                                    }`}
-                                  />
-                                  <div className="min-w-0">
-                                    <div className="text-[13px] font-medium text-black truncate">
-                                      {wf.title}
-                                    </div>
-                                    <div className="text-[11px] text-neutral-500 mt-0.5 truncate">
-                                      {wf.meta}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="relative z-10 flex items-center gap-2 shrink-0 mt-0.5">
-                                  {wf.isLive && (
-                                    <CompactAudioVisualizer bars={4} height={11} active />
-                                  )}
-                                  <span className="text-[11px] font-mono text-black">
-                                    {wf.statusLabel}
-                                  </span>
-                                </div>
-                              </motion.button>
-                            );
-                          })}
-                          {filteredHeroWorkflows.length === 0 && (
-                            <div className="py-10 text-center text-xs text-neutral-500">
-                              No workflows match “{heroSearch}”.
+                                <Plus className="w-3 h-3" />
+                                <span>New Workflow</span>
+                              </button>
                             </div>
-                          )}
-                        </div>
-                      </div>
+                          </div>
 
-                      {/* Right Inspector Panel with Smooth AnimatePresence Workflow Switching */}
-                      <div className="lg:col-span-5 p-5 sm:p-6 bg-[#FAFAFA] flex flex-col justify-between gap-4">
-                        <AnimatePresence mode="wait">
-                          <motion.div
-                            key={activeWorkflow.id}
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -6 }}
-                            transition={{ duration: 0.24, ease: ARIXO_EASE }}
-                            className="flex flex-col justify-between gap-4 h-full"
-                          >
-                            {/* Live Transcript Card */}
-                            <div className="bg-white border border-black/[0.07] rounded-xl p-4 space-y-2.5">
-                              <div className="flex items-center justify-between text-xs gap-2">
-                                <span className="font-medium text-black">
-                                  Live command transcript
-                                </span>
-                                <span className="font-mono text-[11px] text-neutral-500 truncate">
-                                  {activeWorkflow.citedDoc}
-                                </span>
+                          {/* 4 KPI Metric Cards */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            {[
+                              { label: 'Active Workflows', value: '5', note: '3 running now' },
+                              { label: 'Open Tasks', value: '12', note: '4 due today' },
+                              { label: 'Pending Approvals', value: '3', note: 'Owner gate' },
+                              { label: 'Success Rate', value: '96%', note: 'Last 30 days' },
+                            ].map((kpi) => (
+                              <div
+                                key={kpi.label}
+                                className="rounded-xl border border-[#E5E5E5] bg-white p-3"
+                              >
+                                <div className="text-[10px] text-[#737373] font-medium">
+                                  {kpi.label}
+                                </div>
+                                <div className="font-display text-lg font-bold text-[#111111] tabular-nums mt-0.5">
+                                  {kpi.value}
+                                </div>
+                                <div className="text-[10px] text-[#737373] font-mono mt-0.5">
+                                  {kpi.note}
+                                </div>
                               </div>
-                              <div className="space-y-1.5 text-[12px]">
-                                {activeWorkflow.transcript.map((line, i) => {
-                                  const isSpoken =
-                                    activeWorkflow.isLive &&
-                                    i === liveTranscriptHighlight % activeWorkflow.transcript.length;
-                                  return (
-                                    <div
-                                      key={line.time}
-                                      className={`flex items-start gap-2.5 leading-relaxed px-2 py-1 rounded-md transition-colors duration-300 ${
-                                        isSpoken ? 'bg-[#F5F5F5] text-black' : 'text-neutral-600'
-                                      }`}
-                                    >
-                                      <span className="font-mono text-[11px] text-neutral-400 tabular-nums shrink-0 mt-0.5">
-                                        {line.time}
-                                      </span>
-                                      <span>{line.line}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
+                            ))}
+                          </div>
 
-                            {/* Action Items Card with Spring Checkmarks */}
-                            <div className="bg-white border border-black/[0.07] rounded-xl p-4 space-y-2">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="font-medium text-black">
-                                  Action items · {activeWorkflow.actions.length}
+                          {/* Workflows & Approvals Split */}
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                            {/* Active Workflows List */}
+                            <div className="md:col-span-7 rounded-xl border border-[#E5E5E5] bg-white p-3.5 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-display text-xs font-semibold text-[#111111]">
+                                  Recent Workflows
                                 </span>
-                                <span className="text-[11px] text-neutral-500">
-                                  {activeWorkflow.department}
+                                <span className="text-[10px] font-mono text-[#737373]">
+                                  {filteredHeroWorkflows.length} shown
                                 </span>
                               </div>
                               <div className="space-y-1">
-                                {activeWorkflow.actions.map((act) => {
-                                  const checked = Boolean(completedActionIds[act.id]);
+                                {filteredHeroWorkflows.slice(0, 4).map((wf) => {
+                                  const selected = wf.id === activeWorkflow.id;
                                   return (
                                     <button
-                                      key={act.id}
+                                      key={wf.id}
                                       type="button"
-                                      onClick={() =>
-                                        setCompletedActionIds((prev) => ({
-                                          ...prev,
-                                          [act.id]: !prev[act.id],
-                                        }))
-                                      }
-                                      className="w-full text-left flex items-center gap-2.5 py-1.5 px-1.5 rounded-md hover:bg-[#F7F7F7] transition-colors cursor-pointer"
+                                      onClick={() => setSelectedWorkflowId(wf.id)}
+                                      className={`w-full text-left px-2.5 py-2 rounded-lg flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                                        selected
+                                          ? 'bg-[#F4F4F4] border border-black/[0.08]'
+                                          : 'hover:bg-[#FAFAFA]'
+                                      }`}
                                     >
-                                      <span
-                                        className={`w-4 h-4 rounded-[4px] border flex items-center justify-center shrink-0 transition-colors duration-200 ${
-                                          checked
-                                            ? 'bg-black border-black text-white'
-                                            : 'bg-white border-neutral-300'
-                                        }`}
-                                      >
-                                        <motion.span
-                                          initial={false}
-                                          animate={{ scale: checked ? 1 : 0, opacity: checked ? 1 : 0 }}
-                                          transition={ARIXO_SNAPPY_SPRING}
-                                        >
-                                          <Check className="w-3 h-3" />
-                                        </motion.span>
-                                      </span>
-                                      <span
-                                        className={`text-[12px] transition-colors ${
-                                          checked ? 'text-neutral-400 line-through' : 'text-black'
-                                        }`}
-                                      >
-                                        {act.text}
+                                      <div className="min-w-0">
+                                        <div className="text-[11px] font-semibold text-[#111111] truncate">
+                                          {wf.title}
+                                        </div>
+                                        <div className="text-[10px] text-[#737373] truncate">
+                                          {wf.department} · {wf.citedDoc}
+                                        </div>
+                                      </div>
+                                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#F2F2F2] text-[#111111] shrink-0">
+                                        {wf.statusLabel}
                                       </span>
                                     </button>
                                   );
@@ -1169,43 +1110,67 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
                               </div>
                             </div>
 
-                            {/* Governance Verification Card with Animated ScaleX Bars */}
-                            <div className="bg-white border border-black/[0.07] rounded-xl p-4 space-y-2.5">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="font-medium text-black">Workflow verification</span>
-                                <span className="text-[11px] text-neutral-500">
-                                  RBAC · Tenant isolated
-                                </span>
+                            {/* Action Items / Approvals */}
+                            <div className="md:col-span-5 rounded-xl border border-[#E5E5E5] bg-white p-3.5 flex flex-col justify-between gap-2.5">
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="font-display text-xs font-semibold text-[#111111]">
+                                    Action Items &amp; Approvals
+                                  </span>
+                                  <span className="text-[10px] font-mono text-[#737373]">
+                                    {activeWorkflow.department}
+                                  </span>
+                                </div>
+                                <div className="space-y-1">
+                                  {activeWorkflow.actions.map((act) => {
+                                    const checked = Boolean(completedActionIds[act.id]);
+                                    return (
+                                      <button
+                                        key={act.id}
+                                        type="button"
+                                        onClick={() =>
+                                          setCompletedActionIds((prev) => ({
+                                            ...prev,
+                                            [act.id]: !prev[act.id],
+                                          }))
+                                        }
+                                        className="w-full text-left flex items-center gap-2 py-1 px-1 rounded hover:bg-[#FAFAFA] cursor-pointer"
+                                      >
+                                        <span
+                                          className={`w-3.5 h-3.5 rounded-[3px] border flex items-center justify-center shrink-0 ${
+                                            checked ? 'bg-black border-black text-white' : 'bg-white border-neutral-300'
+                                          }`}
+                                        >
+                                          {checked && <Check className="w-2.5 h-2.5" />}
+                                        </span>
+                                        <span
+                                          className={`text-[11px] truncate ${
+                                            checked ? 'text-neutral-400 line-through' : 'text-[#111111]'
+                                          }`}
+                                        >
+                                          {act.text}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                              <div className="space-y-2">
-                                {activeWorkflow.checks.map((chk, idx) => (
-                                  <div
-                                    key={chk.label}
-                                    className="grid grid-cols-12 items-center gap-3 text-[11px]"
-                                  >
-                                    <span className="col-span-5 text-neutral-600">{chk.label}</span>
-                                    <div className="col-span-5 h-1.5 rounded-full bg-neutral-100 overflow-hidden">
-                                      <motion.div
-                                        initial={{ scaleX: 0 }}
-                                        animate={{ scaleX: chk.percent / 100 }}
-                                        transition={{
-                                          duration: 0.65,
-                                          delay: idx * 0.08,
-                                          ease: ARIXO_EASE,
-                                        }}
-                                        style={{ transformOrigin: 'left center' }}
-                                        className="h-full w-full bg-black rounded-full"
-                                      />
-                                    </div>
-                                    <span className="col-span-2 text-right font-mono text-black whitespace-nowrap">
-                                      {chk.value}
-                                    </span>
-                                  </div>
-                                ))}
+
+                              <div className="pt-2 border-t border-[#E5E5E5] flex items-center justify-between text-[10px]">
+                                <span className="text-[#737373] font-mono">
+                                  Tasks · Workflows · Audit
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={onRegister}
+                                  className="font-semibold text-[#111111] hover:underline cursor-pointer"
+                                >
+                                  Open workspace →
+                                </button>
                               </div>
                             </div>
-                          </motion.div>
-                        </AnimatePresence>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1213,184 +1178,7 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
               </div>
             </section>
 
-            {/* 2. INFINITE CLIENT LOGO MARQUEE TICKER (Exact Arixo continuous marquee) */}
-            <section className="py-10 px-6 sm:px-12 border-y border-black/[0.07] bg-white">
-              <div className="max-w-[1280px] mx-auto flex flex-col items-center gap-5 text-center">
-                <p className="text-[13px] text-neutral-500">
-                  Trusted by operations leads from modern teams
-                </p>
-                <InfiniteLogoTicker />
-              </div>
-            </section>
-
-            {/* 3. PROBLEM SECTION — LEFT-ALIGNED HEADING + 3 LIVING ANIMATED BENTO CARDS */}
-            <section className="py-20 sm:py-28 px-6 sm:px-12 bg-white">
-              <div className="max-w-[1280px] mx-auto">
-                <ScrollReveal className="max-w-[740px] mb-14 space-y-4">
-                  <h2
-                    className="font-display font-medium tracking-[-0.04em] leading-[1.06] text-black [text-wrap:balance]"
-                    style={{ fontSize: 'clamp(2.25rem, 4.6vw, 3.75rem)' }}
-                  >
-                    Your workflows are running you<span className="text-black">.</span>
-                    <br />
-                    Not the other way around<span className="text-black">.</span>
-                  </h2>
-                  <p className="text-base sm:text-[17px] text-neutral-600 leading-relaxed max-w-[540px]">
-                    Every team loses hours translating spoken decisions into manual tickets, policy checks, and follow-up pings.
-                  </p>
-                </ScrollReveal>
-
-                {/* 3 Living Animated Bento Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  <ScrollReveal delay={0.05} className="flex flex-col gap-5">
-                    <ProblemCardTranscript />
-                    <div className="space-y-2">
-                      <h3 className="font-display text-[20px] font-medium tracking-[-0.02em] text-black">
-                        Never miss what was said
-                      </h3>
-                      <p className="text-[14px] text-neutral-600 leading-relaxed">
-                        The moment you stop to type tickets manually, half the decision disappears. Flowstate captures spoken instructions cleanly as they happen.
-                      </p>
-                    </div>
-                  </ScrollReveal>
-
-                  <ScrollReveal delay={0.14} className="flex flex-col gap-5">
-                    <ProblemCardOwnership />
-                    <div className="space-y-2">
-                      <h3 className="font-display text-[20px] font-medium tracking-[-0.02em] text-black">
-                        Walk out knowing who owns what
-                      </h3>
-                      <p className="text-[14px] text-neutral-600 leading-relaxed">
-                        Every workflow leaves with explicit department routing and approval owners — no more hunting across chat threads two weeks later.
-                      </p>
-                    </div>
-                  </ScrollReveal>
-
-                  <ScrollReveal delay={0.23} className="flex flex-col gap-5">
-                    <ProblemCardAsyncBrief />
-                    <div className="space-y-2">
-                      <h3 className="font-display text-[20px] font-medium tracking-[-0.02em] text-black">
-                        No more “what did I miss?”
-                      </h3>
-                      <p className="text-[14px] text-neutral-600 leading-relaxed">
-                        Whoever was not in the room gets the full transcript, cited runbook, department owners, and audit receipt — never three vague bullet points.
-                      </p>
-                    </div>
-                  </ScrollReveal>
-                </div>
-              </div>
-            </section>
-
-            {/* 4. FEATURES SECTION — SCROLL-SYNCED STICKY LEFT ACCORDION + LIVING RIGHT SHOWCASES */}
-            <section
-              id="features"
-              className="py-20 sm:py-28 px-6 sm:px-12 border-t border-black/[0.07] bg-white"
-            >
-              <div className="max-w-[1280px] mx-auto">
-                <ScrollReveal className="max-w-[680px] mb-16 space-y-3">
-                  <h2
-                    className="font-display font-medium tracking-[-0.04em] leading-[1.06] text-black [text-wrap:balance]"
-                    style={{ fontSize: 'clamp(2.25rem, 4.6vw, 3.75rem)' }}
-                  >
-                    Everything your operations need<span className="text-black">.</span>
-                  </h2>
-                  <p className="text-base sm:text-[17px] text-neutral-600 leading-relaxed">
-                    Four tools. One workspace. All delivered in under 30 seconds after you speak.
-                  </p>
-                </ScrollReveal>
-
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
-                  {/* Sticky Left Accordion with Scroll-Spy & Sliding Active Indicator */}
-                  <div className="lg:col-span-5 lg:sticky lg:top-28 divide-y divide-black/[0.08] border-y border-black/[0.08]">
-                    {ARIXO_FEATURES.map((feat, idx) => {
-                      const isOpen = openFeatureId === feat.id;
-                      return (
-                        <div key={feat.id} className="relative py-5 pl-4">
-                          {isOpen && (
-                            <motion.span
-                              layoutId="featureActiveRail"
-                              transition={ARIXO_SNAPPY_SPRING}
-                              className="absolute left-0 top-4 bottom-4 w-[2px] bg-black rounded-full"
-                            />
-                          )}
-                          <button
-                            type="button"
-                            aria-expanded={isOpen}
-                            onClick={() => handleSelectFeatureAccordion(feat.id)}
-                            className="w-full flex items-center justify-between gap-4 text-left cursor-pointer group"
-                          >
-                            <div className="flex items-baseline gap-3">
-                              <span
-                                className={`font-mono text-[11px] tabular-nums transition-colors ${
-                                  isOpen ? 'text-black' : 'text-neutral-400'
-                                }`}
-                              >
-                                0{idx + 1}
-                              </span>
-                              <span
-                                className={`font-display text-[17px] font-medium tracking-[-0.02em] transition-colors ${
-                                  isOpen ? 'text-black' : 'text-neutral-500 group-hover:text-black'
-                                }`}
-                              >
-                                {feat.accordionTitle}
-                              </span>
-                            </div>
-                            <motion.span
-                              animate={{ rotate: isOpen ? 45 : 0 }}
-                              transition={{ duration: 0.22, ease: ARIXO_EASE }}
-                              className={`shrink-0 ${
-                                isOpen ? 'text-black' : 'text-neutral-400 group-hover:text-black'
-                              }`}
-                            >
-                              <Plus className="w-4 h-4" />
-                            </motion.span>
-                          </button>
-                          <SmoothAccordionBody isOpen={isOpen}>
-                            <p className="pt-3 pl-7 pr-6 text-[14px] text-neutral-600 leading-relaxed">
-                              {feat.accordionBody}
-                            </p>
-                          </SmoothAccordionBody>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Right Column: 4 Living Interactive Feature Visuals */}
-                  <div className="lg:col-span-7 space-y-16">
-                    {ARIXO_FEATURES.map((feat) => (
-                      <ScrollReveal key={feat.id} y={32} className="scroll-mt-32">
-                        <div
-                          id={feat.anchor}
-                          data-feature-id={feat.id}
-                          ref={(el) => {
-                            featureCardRefs.current[feat.id] = el;
-                          }}
-                          className="space-y-5"
-                        >
-                          {feat.visualType === 'voice' && <FeatureVisualVoice />}
-                          {feat.visualType === 'rag' && <FeatureVisualRag />}
-                          {feat.visualType === 'approvals' && (
-                            <FeatureVisualApprovals onRegister={onRegister} />
-                          )}
-                          {feat.visualType === 'exports' && <FeatureVisualExports />}
-
-                          <div className="space-y-1.5 max-w-xl">
-                            <h3 className="font-display text-[20px] font-medium tracking-[-0.02em] text-black">
-                              {feat.cardTitle}
-                            </h3>
-                            <p className="text-[14px] text-neutral-600 leading-relaxed">
-                              {feat.cardSubtitle}
-                            </p>
-                          </div>
-                        </div>
-                      </ScrollReveal>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* 5. HOW IT WORKS — ANIMATED HORIZONTAL LINE + STAGGERED 3-STEP EDITORIAL SEQUENCE */}
+            {/* 2. WHAT FLOWSTATE DOES - 3-STEP EDITORIAL SEQUENCE */}
             <section
               id="how-it-works"
               className="py-20 sm:py-28 px-6 sm:px-12 border-t border-black/[0.07] bg-white"
@@ -1449,273 +1237,9 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
               </div>
             </section>
 
-            {/* 6. SOCIAL PROOF / TESTIMONIALS — STAGGERED 3-COLUMN MASONRY WITH PORTRAIT STORIES */}
+            {/* 3. FEATURES SECTION - CLEAN 2-COLUMN EDITORIAL ACCORDION */}
             <section
-              id="testimonials"
-              className="py-20 sm:py-28 px-6 sm:px-12 border-t border-black/[0.07] bg-white"
-            >
-              <div className="max-w-[1280px] mx-auto">
-                <ScrollReveal className="max-w-[680px] mb-14 space-y-3">
-                  <h2
-                    className="font-display font-medium tracking-[-0.04em] leading-[1.06] text-black [text-wrap:balance]"
-                    style={{ fontSize: 'clamp(2.25rem, 4.6vw, 3.75rem)' }}
-                  >
-                    What teams say<span className="text-black">.</span>
-                  </h2>
-                  <p className="text-base sm:text-[17px] text-neutral-600 leading-relaxed">
-                    How engineering, security, and operations leaders turn spoken instructions into audited execution.
-                  </p>
-                </ScrollReveal>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-                  {TESTIMONIAL_COLUMNS.map((col, colIdx) => (
-                    <div key={colIdx} className="flex flex-col gap-6">
-                      {col.map((item, rowIdx) => (
-                        <ScrollReveal key={item.id} delay={colIdx * 0.08 + rowIdx * 0.06}>
-                          {item.videoImage ? (
-                            <motion.button
-                              type="button"
-                              whileHover={{ y: -4 }}
-                              transition={ARIXO_SNAPPY_SPRING}
-                              onClick={() => setActiveStoryModal(item)}
-                              className="group relative w-full h-[420px] rounded-2xl overflow-hidden border border-black/[0.08] text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
-                            >
-                              <img
-                                src={item.videoImage}
-                                alt={item.videoAlt || item.name}
-                                referrerPolicy="no-referrer"
-                                className="absolute inset-0 w-full h-full object-cover grayscale group-hover:scale-[1.04] transition-transform duration-700 ease-out"
-                              />
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/10" />
-
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <span className="w-14 h-14 rounded-full bg-white text-black flex items-center justify-center shadow-lg transition-transform duration-300 group-hover:scale-110">
-                                  <Play className="w-5 h-5 fill-black ml-0.5" />
-                                </span>
-                              </div>
-
-                              <div className="absolute bottom-0 inset-x-0 p-6 text-white">
-                                <div className="text-sm font-medium">{item.name}</div>
-                                <div className="text-xs text-white/75 mt-0.5">{item.role}</div>
-                              </div>
-                            </motion.button>
-                          ) : (
-                            <motion.figure
-                              whileHover={{ y: -3 }}
-                              transition={ARIXO_SNAPPY_SPRING}
-                              className="rounded-2xl border border-black/[0.07] bg-[#F7F7F7] hover:bg-[#F3F3F3] transition-colors p-6 sm:p-7 flex flex-col justify-between gap-6"
-                            >
-                              <blockquote className="text-[14px] text-neutral-800 leading-relaxed">
-                                “{item.quote}”
-                              </blockquote>
-                              <figcaption className="pt-4 border-t border-black/[0.08]">
-                                <div className="text-[14px] font-medium text-black">
-                                  {item.name}
-                                </div>
-                                <div className="text-[12px] text-neutral-500 mt-0.5">
-                                  {item.role}
-                                </div>
-                              </figcaption>
-                            </motion.figure>
-                          )}
-                        </ScrollReveal>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Animated Extra Testimonials Expansion */}
-                <AnimatePresence>
-                  {showMoreTestimonials && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.4, ease: ARIXO_EASE }}
-                      className="overflow-hidden"
-                    >
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
-                        {EXTRA_TESTIMONIALS.map((item, idx) => (
-                          <motion.figure
-                            key={item.id}
-                            initial={{ opacity: 0, y: 18 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{
-                              duration: 0.4,
-                              delay: idx * 0.07,
-                              ease: ARIXO_EASE,
-                            }}
-                            className="rounded-2xl border border-black/[0.07] bg-[#F7F7F7] p-6 sm:p-7 flex flex-col justify-between gap-6"
-                          >
-                            <blockquote className="text-[14px] text-neutral-800 leading-relaxed">
-                              “{item.quote}”
-                            </blockquote>
-                            <figcaption className="pt-4 border-t border-black/[0.08]">
-                              <div className="text-[14px] font-medium text-black">{item.name}</div>
-                              <div className="text-[12px] text-neutral-500 mt-0.5">
-                                {item.role}
-                              </div>
-                            </figcaption>
-                          </motion.figure>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <div className="mt-10 flex justify-center">
-                  <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.97 }}
-                    transition={ARIXO_SNAPPY_SPRING}
-                    onClick={() => setShowMoreTestimonials((v) => !v)}
-                    className="px-5 py-2.5 rounded-lg border border-black/15 bg-white hover:border-black text-[13px] font-medium text-black transition-colors cursor-pointer"
-                  >
-                    {showMoreTestimonials ? 'Show less' : 'View More'}
-                  </motion.button>
-                </div>
-              </div>
-            </section>
-
-            {/* 7. BLOG SECTION — 4 FULL EDITORIAL BLOGS WITH SLIDING CATEGORY TABS (NO PRICING) */}
-            <section
-              id="blog"
-              className="py-20 sm:py-28 px-6 sm:px-12 border-t border-black/[0.07] bg-white"
-            >
-              <div className="max-w-[1280px] mx-auto">
-                <ScrollReveal className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
-                  <div className="max-w-[640px] space-y-3">
-                    <h2
-                      className="font-display font-medium tracking-[-0.04em] leading-[1.06] text-black [text-wrap:balance]"
-                      style={{ fontSize: 'clamp(2.25rem, 4.6vw, 3.75rem)' }}
-                    >
-                      Blog<span className="text-black">.</span>
-                    </h2>
-                    <p className="text-base sm:text-[17px] text-neutral-600 leading-relaxed">
-                      Practical ideas on voice automation, grounded runbooks, approval governance, and building better systems for growing teams.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => navigateSubPage({ view: 'blog' })}
-                    className="group inline-flex items-center gap-1.5 text-[14px] font-medium text-black hover:underline whitespace-nowrap shrink-0 cursor-pointer"
-                  >
-                    <span>Open blog archive</span>
-                    <ArrowUpRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                  </button>
-                </ScrollReveal>
-
-                {/* Animated Category Filter Tabs with Sliding Black Indicator */}
-                <div
-                  role="tablist"
-                  aria-label="Filter blog articles"
-                  className="flex flex-wrap items-center gap-2 mb-10"
-                >
-                  {BLOG_CATEGORIES.map((category) => {
-                    const active = homeBlogCategory === category;
-                    return (
-                      <button
-                        key={category}
-                        type="button"
-                        role="tab"
-                        aria-selected={active}
-                        onClick={() => setHomeBlogCategory(category)}
-                        className={`relative px-4 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                          active
-                            ? 'text-white'
-                            : 'bg-[#F5F5F5] text-neutral-700 hover:bg-neutral-200 hover:text-black'
-                        }`}
-                      >
-                        {active && (
-                          <motion.span
-                            layoutId="homeBlogActiveTab"
-                            transition={ARIXO_SNAPPY_SPRING}
-                            className="absolute inset-0 bg-black rounded-lg"
-                          />
-                        )}
-                        <span className="relative z-10">{category}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* 2x2 Animated Editorial Blog Grid */}
-                <motion.div layout className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <AnimatePresence mode="popLayout">
-                    {filteredHomeBlogs.map((post, idx) => (
-                      <motion.article
-                        key={post.slug}
-                        layout
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.96 }}
-                        viewport={{ once: true, amount: 0.12 }}
-                        transition={{
-                          duration: 0.45,
-                          delay: idx * 0.06,
-                          ease: ARIXO_EASE,
-                        }}
-                        className="group rounded-2xl border border-black/[0.08] bg-white overflow-hidden hover:border-black transition-colors duration-200 flex flex-col"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => navigateSubPage({ view: 'blog-post', slug: post.slug })}
-                          className="text-left flex flex-col flex-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
-                        >
-                          <div className="overflow-hidden bg-[#F7F7F7] border-b border-black/[0.07]">
-                            <BlogEditorialImage
-                              src={post.coverImage}
-                              alt={post.coverAlt}
-                              title={post.title}
-                              className="w-full aspect-[4/3] object-cover group-hover:scale-[1.03] transition-transform duration-500 ease-out"
-                            />
-                          </div>
-
-                          <div className="p-6 sm:p-8 flex flex-col flex-1 justify-between">
-                            <div>
-                              <div className="flex items-center gap-2 text-xs text-neutral-500 mb-3">
-                                <span className="font-medium text-black">{post.category}</span>
-                                <span aria-hidden="true">·</span>
-                                <span>{post.date}</span>
-                                <span aria-hidden="true">·</span>
-                                <span>{post.readTime}</span>
-                              </div>
-
-                              <h3 className="font-display text-xl sm:text-[22px] font-medium tracking-[-0.025em] text-black leading-snug mb-3 group-hover:underline decoration-1 underline-offset-4 [text-wrap:balance]">
-                                {post.title}
-                              </h3>
-
-                              <p className="text-[14px] text-neutral-600 leading-relaxed mb-6">
-                                {post.excerpt}
-                              </p>
-                            </div>
-
-                            <div className="pt-4 border-t border-black/[0.06] flex items-center justify-between text-xs">
-                              <span className="text-neutral-600">
-                                <strong className="font-medium text-black">
-                                  {post.author.name}
-                                </strong>{' '}
-                                · {post.author.role}
-                              </span>
-                              <span className="inline-flex items-center gap-1 font-medium text-black shrink-0">
-                                <span>Read</span>
-                                <ArrowUpRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                              </span>
-                            </div>
-                          </div>
-                        </button>
-                      </motion.article>
-                    ))}
-                  </AnimatePresence>
-                </motion.div>
-              </div>
-            </section>
-
-            {/* 8. FAQ SECTION — SILKY FRAMER MOTION ACCORDION */}
-            <section
-              id="faq"
+              id="features"
               className="py-20 sm:py-28 px-6 sm:px-12 border-t border-black/[0.07] bg-white"
             >
               <div className="max-w-[1280px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
@@ -1724,18 +1248,10 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
                     className="font-display font-medium tracking-[-0.04em] leading-[1.06] text-black [text-wrap:balance]"
                     style={{ fontSize: 'clamp(2.25rem, 4.4vw, 3.5rem)' }}
                   >
-                    Questions people actually ask<span className="text-black">.</span>
+                    Everything your operations need<span className="text-black">.</span>
                   </h2>
                   <p className="text-base text-neutral-600 leading-relaxed">
-                    If something’s still unclear,{' '}
-                    <button
-                      type="button"
-                      onClick={() => navigateSubPage({ view: 'contact' })}
-                      className="font-medium text-black underline underline-offset-4 hover:text-neutral-700 cursor-pointer"
-                    >
-                      we’re one message away
-                    </button>
-                    .
+                    Four core capabilities built for personal and professional workspaces.
                   </p>
                 </ScrollReveal>
 
@@ -1743,19 +1259,24 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
                   delay={0.1}
                   className="lg:col-span-7 divide-y divide-black/[0.08] border-y border-black/[0.08]"
                 >
-                  {FAQ_ITEMS.map((item, idx) => {
-                    const isOpen = openFaqIndex === idx;
+                  {ARIXO_FEATURES.map((feat, idx) => {
+                    const isOpen = openFeatureId === feat.id;
                     return (
-                      <div key={item.q}>
+                      <div key={feat.id}>
                         <button
                           type="button"
                           aria-expanded={isOpen}
-                          onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
+                          onClick={() => handleSelectFeatureAccordion(feat.id)}
                           className="w-full py-5 flex items-center justify-between gap-4 text-left cursor-pointer group"
                         >
-                          <span className="font-display text-[17px] font-medium text-black group-hover:text-neutral-700 transition-colors">
-                            {item.q}
-                          </span>
+                          <div className="flex items-baseline gap-3">
+                            <span className="font-mono text-[11px] tabular-nums text-neutral-400">
+                              0{idx + 1}
+                            </span>
+                            <span className="font-display text-[17px] font-medium text-black group-hover:text-neutral-700 transition-colors">
+                              {feat.accordionTitle}
+                            </span>
+                          </div>
                           <motion.span
                             animate={{ rotate: isOpen ? 45 : 0 }}
                             transition={{ duration: 0.22, ease: ARIXO_EASE }}
@@ -1765,8 +1286,8 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
                           </motion.span>
                         </button>
                         <SmoothAccordionBody isOpen={isOpen}>
-                          <div className="pb-6 pr-8 text-[14px] text-neutral-600 leading-relaxed">
-                            {item.a}
+                          <div className="pb-6 pl-7 pr-8 text-[14px] text-neutral-600 leading-relaxed">
+                            {feat.accordionBody}
                           </div>
                         </SmoothAccordionBody>
                       </div>
@@ -1789,7 +1310,7 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
                       <span className="text-black">.</span>
                     </h2>
                     <p className="text-base sm:text-[17px] text-neutral-600 leading-relaxed max-w-xl mb-9">
-                      Flowstate captures your command, grounds it in your playbooks, and delivers structured workflows, tasks, and approvals — before you even close the tab.
+                      Flowstate captures your command, grounds it in your playbooks, and delivers structured workflows, tasks, and approvals - before you even close the tab.
                     </p>
 
                     <div className="flex flex-wrap items-center justify-center gap-3 mb-5">
@@ -1814,17 +1335,6 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({
                       >
                         <span>Join early access waitlist</span>
                       </motion.button>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-neutral-500">
-                      <span className="inline-flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-black" />
-                        No credit card required
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span>Set up in 60 seconds</span>
-                      <span aria-hidden="true">·</span>
-                      <span>Zero synthetic demo data</span>
                     </div>
                   </div>
                 </ScrollReveal>

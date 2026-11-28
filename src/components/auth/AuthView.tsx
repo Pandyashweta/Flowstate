@@ -58,7 +58,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
     setInfoMessage(null);
 
     if (!email.trim() || !email.includes('@')) {
-      setError('Please enter a valid business or personal email address.');
+      setError('Please enter a valid email address.');
       return;
     }
 
@@ -98,7 +98,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
 
     if (password.length < 6) {
-      setError('Password must contain at least 6 characters.');
+      setError('Password needs to be at least 6 characters.');
       return;
     }
 
@@ -106,7 +106,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
     try {
       if (mode === 'register') {
         if (!agreeTerms) {
-          setError('Please acknowledge the Terms of Service and Privacy Policy to proceed.');
+          setError('Please accept the Terms and Privacy Policy to continue.');
           setLoading(false);
           return;
         }
@@ -191,9 +191,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
           <div>
             <div className="flex items-center gap-3 mb-8">
               <img
-                src="/icons/favicon_io/android-chrome-192x192.png"
+                src="/icons/favicon_io/apple-touch-icon.png"
                 alt="FLOWSTATE"
-                className="w-10 h-10 rounded-lg object-cover"
+                className="w-9 h-9 rounded-lg object-cover"
               />
               <span className="font-display font-bold text-xl tracking-tight text-[#111111] dark:text-white">
                 FLOWSTATE
@@ -201,45 +201,28 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </div>
 
             <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-[#111111] dark:text-white mb-3 leading-snug">
-              Voice-Driven Agentic
+              AI-Driven Company
               <br />
-              Workflow Automation
+              Workflows &amp; Operations
             </h2>
             <p className="text-xs sm:text-sm text-[#525252] dark:text-[#A3A3A3] leading-relaxed mb-8 max-w-md">
-              Turning everyday business instructions into structured, actionable workflows. One instruction. Connected processes. Work that moves forward.
+              Turn voice or text directives into structured workflows, grounded runbook answers, and human-approved execution.
             </p>
           </div>
 
           <div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <div className="p-3 rounded-xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626]">
-                <Mic className="w-4 h-4 text-[#111111] dark:text-white mb-2" />
-                <div className="text-xs font-semibold text-[#111111] dark:text-white leading-tight">
-                  Voice Command Center
-                </div>
-                <div className="text-[11px] text-[#737373] mt-1 leading-snug">
-                  Live STT, multilingual &amp; TTS
-                </div>
+            <div className="border-t border-[#E5E5E5] dark:border-[#262626] divide-y divide-[#E5E5E5] dark:divide-[#262626] text-xs">
+              <div className="py-3 flex items-center justify-between gap-4">
+                <span className="font-medium text-[#111111] dark:text-white">AI Command Center</span>
+                <span className="text-[#737373]">Voice &amp; text workflow drafting</span>
               </div>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626]">
-                <BookOpen className="w-4 h-4 text-[#111111] dark:text-white mb-2" />
-                <div className="text-xs font-semibold text-[#111111] dark:text-white leading-tight">
-                  Grounded RAG Docs
-                </div>
-                <div className="text-[11px] text-[#737373] mt-1 leading-snug">
-                  PDF, DOCX &amp; TXT retrieval
-                </div>
+              <div className="py-3 flex items-center justify-between gap-4">
+                <span className="font-medium text-[#111111] dark:text-white">Knowledge Base RAG</span>
+                <span className="text-[#737373]">PDF, DOCX &amp; TXT citations</span>
               </div>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-[#121212] border border-[#E5E5E5] dark:border-[#262626]">
-                <ShieldCheck className="w-4 h-4 text-[#111111] dark:text-white mb-2" />
-                <div className="text-xs font-semibold text-[#111111] dark:text-white leading-tight">
-                  Human-in-the-Loop
-                </div>
-                <div className="text-[11px] text-[#737373] mt-1 leading-snug">
-                  RBAC &amp; immutable audit trail
-                </div>
+              <div className="py-3 flex items-center justify-between gap-4">
+                <span className="font-medium text-[#111111] dark:text-white">Approvals &amp; Audit</span>
+                <span className="text-[#737373]">5-tier RBAC &amp; CSV/JSON logs</span>
               </div>
             </div>
 
@@ -539,7 +522,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                       className="mt-0.5 rounded text-[#111111] dark:text-white focus:ring-[#111111]"
                     />
                     <span>
-                      I agree to the Terms of Service, Privacy Policy, and tenant governance rules.
+                      I agree to the Terms and Privacy Policy.
                     </span>
                   </label>
                 )}
@@ -564,41 +547,45 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </button>
               </form>
 
-              <div className="relative my-6 text-center">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-[#E5E5E5] dark:border-[#262626]" />
-                </div>
-                <span className="relative px-3 bg-white dark:bg-[#121212] text-xs font-mono uppercase text-[#737373]">
-                  Or continue with
-                </span>
-              </div>
+              {false && (
+                <>
+                  <div className="relative my-6 text-center">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-[#E5E5E5] dark:border-[#262626]" />
+                    </div>
+                    <span className="relative px-3 bg-white dark:bg-[#121212] text-xs font-mono uppercase text-[#737373]">
+                      Or continue with
+                    </span>
+                  </div>
 
-              <button
-                type="button"
-                onClick={handleGoogleSignIn}
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl border border-[#E5E5E5] dark:border-[#262626] bg-white dark:bg-[#161616] hover:bg-[#FAFAFA] dark:hover:bg-[#1F1F1F] text-[#404040] dark:text-[#E5E5E5] text-xs sm:text-sm font-medium transition-colors cursor-pointer"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path
-                    fill="#4285F4"
-                    d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.98-3.09z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"
-                  />
-                </svg>
-                <span>Continue with Google</span>
-              </button>
+                  <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    disabled={loading}
+                    className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl border border-[#E5E5E5] dark:border-[#262626] bg-white dark:bg-[#161616] hover:bg-[#FAFAFA] dark:hover:bg-[#1F1F1F] text-[#404040] dark:text-[#E5E5E5] text-xs sm:text-sm font-medium transition-colors cursor-pointer"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <path
+                        fill="#4285F4"
+                        d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.98-3.09z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"
+                      />
+                    </svg>
+                    <span>Continue with Google</span>
+                  </button>
+                </>
+              )}
 
               <div className="mt-6 text-center text-xs text-[#737373] dark:text-[#737373]">
                 {mode === 'register' ? (

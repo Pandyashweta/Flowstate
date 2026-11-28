@@ -288,7 +288,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                         <span>·</span>
                         <span className="inline-flex items-center gap-1 font-mono tabular-nums">
                           <Calendar className="w-3 h-3" />
-                          {task.dueDate ? task.dueDate.slice(5) : '—'}
+                          {task.dueDate ? task.dueDate.slice(5) : '-'}
                         </span>
                         {task.comments.length > 0 && (
                           <span className="inline-flex items-center gap-0.5 ml-auto font-mono">
@@ -529,7 +529,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   <option value="">Standalone task (no parent workflow)</option>
                   {workflows.map((w) => (
                     <option key={w.id} value={w.id}>
-                      {w.code} — {w.title}
+                      {w.code} - {w.title}
                     </option>
                   ))}
                 </select>

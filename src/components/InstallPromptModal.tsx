@@ -123,7 +123,7 @@ export const InstallPromptModal: React.FC<InstallPromptModalProps> = ({
                 </div>
               ) : (
                 <div className="p-3.5 rounded-xl bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] text-[11px] text-[#525252] dark:text-[#A3A3A3]">
-                  FLOWSTATE installs safely through your browser&apos;s built-in web app installer—no external installer or `.exe` file required.
+                  FLOWSTATE installs safely through your browser&apos;s built-in web app installer-no external installer or `.exe` file required.
                 </div>
               )}
 

@@ -1,3 +1,4 @@
+import { ChildProcess, spawn } from 'child_process';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import express, { NextFunction, Request, Response } from 'express';
@@ -18,6 +19,92 @@ import {
 dotenv.config();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PYTHON_BACKEND_PORT = process.env.PYTHON_BACKEND_PORT ? parseInt(process.env.PYTHON_BACKEND_PORT, 10) : 5001;
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || `http://127.0.0.1:${PYTHON_BACKEND_PORT}`;
+let pythonProcess: ChildProcess | null = null;
+
+async function isPythonBackendHealthy(): Promise<Record<string, unknown> | null> {
+  try {
+    const resp = await fetch(`${PYTHON_BACKEND_URL}/api/py/health`);
+    if (!resp.ok) return null;
+    return (await resp.json()) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+async function startPythonBackend(): Promise<void> {
+  if (await isPythonBackendHealthy()) {
+    console.log(`Python backend already running at ${PYTHON_BACKEND_URL}`);
+    return;
+  }
+  const scriptPath = path.resolve(process.cwd(), 'backend', 'app.py');
+  if (!fs.existsSync(scriptPath)) {
+    console.warn('backend/app.py not found; skipping Python backend startup.');
+    return;
+  }
+  const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
+  pythonProcess = spawn(pyCmd, [scriptPath], {
+    env: {
+      ...process.env,
+      PYTHON_BACKEND_PORT: String(PYTHON_BACKEND_PORT),
+      PYTHONUNBUFFERED: '1',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  pythonProcess.stdout?.on('data', (chunk) => {
+    const msg = String(chunk).trim();
+    if (msg) console.log(`[python] ${msg}`);
+  });
+  pythonProcess.stderr?.on('data', (chunk) => {
+    const msg = String(chunk).trim();
+    if (msg) console.error(`[python] ${msg}`);
+  });
+  pythonProcess.on('exit', (code) => {
+    console.log(`[python] exited with code ${code}`);
+    pythonProcess = null;
+  });
+
+  // Wait up to 10 seconds for Python Flask to accept connections
+  for (let i = 0; i < 50; i++) {
+    if (await isPythonBackendHealthy()) {
+      console.log(`Python backend listening at ${PYTHON_BACKEND_URL}`);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  console.warn(`Python backend did not respond in time at ${PYTHON_BACKEND_URL}`);
+}
+
+function stopPythonBackend(): void {
+  if (pythonProcess && !pythonProcess.killed) {
+    pythonProcess.kill();
+    pythonProcess = null;
+  }
+}
+
+process.on('SIGINT', () => {
+  stopPythonBackend();
+  process.exit(0);
+});
+process.on('SIGTERM', () => {
+  stopPythonBackend();
+  process.exit(0);
+});
+
+async function postJsonToPython<T>(endpoint: string, payload: unknown): Promise<T> {
+  const resp = await fetch(`${PYTHON_BACKEND_URL}${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!resp.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : `Python backend error (${resp.status})`);
+  }
+  return data as T;
+}
+
 const app = express();
 
 // Load Firebase projectId from provisioned config for ID token verification
@@ -790,11 +877,13 @@ function buildGeminiChatHistory(
 
 // --- API Routes ---
 
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', async (_req, res) => {
+  const pyHealth = await isPythonBackendHealthy();
   res.json({
     status: 'ok',
     service: 'flowstate-api',
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY'),
+    pythonBackend: pyHealth ? { connected: true, url: PYTHON_BACKEND_URL, ...pyHealth } : { connected: false, url: PYTHON_BACKEND_URL },
     models: {
       general: FREE_MODEL_GENERAL,
       fast: FREE_MODEL_FAST,
@@ -1662,7 +1751,7 @@ app.delete('/api/workspaces/:workspaceId/notifications/:id', requireAuth, (req: 
   }
 });
 
-// 1. Document upload & parsing (PDF, DOCX, TXT, MD)
+// 1. Document upload & parsing (Python backend primary: PyPDF2 / python-docx, JS fallback)
 app.post(
   '/api/documents/extract',
   requireAuth,
@@ -1673,6 +1762,25 @@ app.post(
       if (!file) {
         res.status(400).json({ error: 'No document file uploaded.' });
         return;
+      }
+
+      try {
+        const formData = new FormData();
+        const blob = new Blob([new Uint8Array(file.buffer)], {
+          type: file.mimetype || 'application/octet-stream',
+        });
+        formData.append('file', blob, file.originalname);
+        const pyResp = await fetch(`${PYTHON_BACKEND_URL}/api/py/documents/extract`, {
+          method: 'POST',
+          body: formData,
+        });
+        if (pyResp.ok) {
+          const pyData = await pyResp.json();
+          res.json(pyData);
+          return;
+        }
+      } catch {
+        // Fallback to local JS parser if Python backend is unavailable
       }
 
       const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
@@ -1769,7 +1877,7 @@ app.post(
   }
 );
 
-// 2. Semantic Search across Knowledge Base
+// 2. Semantic Search across Knowledge Base (Python RAG)
 app.post('/api/rag/search', requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
     const { query, documents } = req.body as { query?: string; documents?: IncomingDoc[] };
@@ -1778,8 +1886,12 @@ app.post('/api/rag/search', requireAuth, async (req: AuthedRequest, res: Respons
       return;
     }
     const docs = Array.isArray(documents) ? documents : [];
-    const results = await semanticRetrieve(query.trim(), docs, 6);
-    res.json({ results });
+    const pyRes = await postJsonToPython<{ results: unknown[] }>('/api/py/rag/search', {
+      query: query.trim(),
+      documents: docs,
+      topK: 6,
+    });
+    res.json(pyRes);
   } catch (err) {
     console.error('RAG search error:', err);
     const message = err instanceof Error ? err.message : 'Semantic search failed.';
@@ -1787,7 +1899,7 @@ app.post('/api/rag/search', requireAuth, async (req: AuthedRequest, res: Respons
   }
 });
 
-// 3. Grounded RAG Q&A
+// 3. Grounded RAG Q&A (Python RAG + Gemini/Local Synthesis)
 app.post('/api/rag/ask', requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
     const { question, documents } = req.body as {
@@ -1799,52 +1911,11 @@ app.post('/api/rag/ask', requireAuth, async (req: AuthedRequest, res: Response) 
       return;
     }
     const docs = Array.isArray(documents) ? documents : [];
-    if (docs.length === 0) {
-      res.json({
-        answer:
-          'No documents are currently available in your workspace knowledge base. Upload SOPs, incident logs, or runbooks to receive grounded answers.',
-        grounded: false,
-        citations: [],
-      });
-      return;
-    }
-
-    const citations = await semanticRetrieve(question.trim(), docs, 4);
-    const contextBlock = citations
-      .map(
-        (c, i) =>
-          `[Source ${i + 1}] Title: ${c.docTitle} | Category: ${c.category} | Relevance: ${(c.similarity * 100).toFixed(0)}%\nExcerpt:\n${c.excerpt}`
-      )
-      .join('\n\n---\n\n');
-
-    const responseText = await callGeminiGenerate(
-      `Enterprise Knowledge Excerpts:\n${contextBlock}\n\nUser Question: ${question.trim()}`,
-      {
-        systemInstruction:
-          'You are the FLOWSTATE Enterprise Knowledge Assistant. Answer the user question strictly using ONLY the provided Enterprise Knowledge Excerpts. Never invent company policies, ticket numbers, SLAs, or procedures that are not explicitly present in the excerpts. Cite source titles inline when answering.',
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            answer: { type: Type.STRING },
-            grounded: { type: Type.BOOLEAN },
-            usedSourceTitles: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-            },
-          },
-          required: ['answer', 'grounded', 'usedSourceTitles'],
-        },
-      },
-      'balanced'
-    );
-
-    const parsed = JSON.parse(responseText.trim());
-    res.json({
-      answer: parsed.answer,
-      grounded: Boolean(parsed.grounded),
-      citations,
+    const pyRes = await postJsonToPython('/api/py/rag/ask', {
+      question: question.trim(),
+      documents: docs,
     });
+    res.json(pyRes);
   } catch (err) {
     console.error('RAG Q&A error:', err);
     const formatted = formatGeminiError(err);
@@ -1888,13 +1959,6 @@ app.post('/api/ai/command', requireAuth, async (req: AuthedRequest, res: Respons
       return;
     }
 
-    const client = getGeminiClient();
-    if (!client) {
-      const formatted = formatGeminiError(new Error('GEMINI_API_KEY_UNAVAILABLE'));
-      res.status(formatted.status).json({ error: formatted.message });
-      return;
-    }
-
     const activeDomain =
       typeof domain === 'string' && domain.trim() ? domain.trim().slice(0, 80) : 'General Operations';
     const selectedMode: FreeModelMode =
@@ -1902,7 +1966,6 @@ app.post('/api/ai/command', requireAuth, async (req: AuthedRequest, res: Respons
 
     // Strict tenant isolation: validate membership and load live workspace context
     let scopedDocs: IncomingDoc[] = Array.isArray(knowledgeDocs) ? knowledgeDocs : [];
-    let workspaceName = 'Active Workspace';
     let workspaceWorkflows: { id: string; code: string; title: string; status: string; category: string }[] = [];
     let workspaceTasks: { id: string; code: string; title: string; status: string; priority: string }[] = [];
     let pendingApprovalsCount = 0;
@@ -1910,10 +1973,6 @@ app.post('/api/ai/command', requireAuth, async (req: AuthedRequest, res: Respons
 
     if (workspaceId && typeof workspaceId === 'string') {
       dbStore.requireWorkspacePermission(req.authUser!.uid, workspaceId);
-      const wsSummary = dbStore.listUserWorkspaces(req.authUser!.uid).find((w) => w.workspace.id === workspaceId);
-      if (wsSummary?.workspace?.name) {
-        workspaceName = wsSummary.workspace.name;
-      }
       const wsData = dbStore.getWorkspaceData(workspaceId, req.authUser!.uid);
       scopedDocs = wsData.documents.map((d) => ({
         id: d.id,
@@ -1948,202 +2007,53 @@ app.post('/api/ai/command', requireAuth, async (req: AuthedRequest, res: Respons
       });
     }
 
-    const ragCitations = scopedDocs.length > 0 ? await semanticRetrieve(prompt.trim(), scopedDocs, 4) : [];
-    const ragContext =
-      ragCitations.length > 0
-        ? ragCitations
-            .map(
-              (c, idx) =>
-                `[Doc ${idx + 1}: ${c.docTitle} | Category: ${c.category} | Score: ${(c.similarity * 100).toFixed(0)}%]\n${c.excerpt}`
-            )
-            .join('\n\n')
-        : 'No matching documents found in the workspace Knowledge Base.';
-
-    const teamContext =
-      Array.isArray(teamMembers) && teamMembers.length > 0
-        ? teamMembers.map((m) => `${m.name} (${m.role}, ${m.department})`).join('; ')
-        : `${activeDomain} Lead, Operations Manager, Support Engineer`;
-
-    const integrationsContext =
-      Array.isArray(integrations) && integrations.length > 0
-        ? integrations
-            .map(
-              (i) =>
-                `${i.name} [${i.provider} / ${i.category}] - ${i.isSimulated ? 'SIMULATED' : 'LIVE'} (${i.status})`
-            )
-            .join('; ')
-        : 'Ticketing [SIMULATED], Email Notifications [SIMULATED], CRM [SIMULATED]';
-
-    const workspaceStateSummary = [
-      `Workflows (${workspaceWorkflows.length}): ${
-        workspaceWorkflows.length > 0
-          ? workspaceWorkflows
-              .slice(0, 12)
-              .map((w) => `${w.code} "${w.title}" [${w.status}, ${w.category}]`)
-              .join('; ')
-          : 'None yet'
-      }`,
-      `Open Tasks (${workspaceTasks.filter((t) => t.status !== 'completed').length} of ${workspaceTasks.length}): ${
-        workspaceTasks.length > 0
-          ? workspaceTasks
-              .slice(0, 12)
-              .map((t) => `${t.code} "${t.title}" [${t.status}, ${t.priority}]`)
-              .join('; ')
-          : 'None yet'
-      }`,
-      `Pending Approvals: ${pendingApprovalsCount}`,
-    ].join('\n');
-
-    const todayIso = new Date().toISOString().slice(0, 10);
-    const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-
-    const systemInstruction = buildDomainSystemInstruction({
+    const pyResult = await postJsonToPython<{
+      assistantMessage: string;
+      spokenResponse: string;
+      needsClarification: boolean;
+      clarifyingQuestions: string[];
+      proposedWorkflow: any;
+      modelUsed: string;
+      domain: string;
+      ragCitations: any[];
+      trace: any[];
+    }>('/api/py/ai/command', {
+      prompt: prompt.trim(),
       domain: activeDomain,
-      workspaceName,
+      modelMode: selectedMode,
       forceWorkflow: Boolean(forceWorkflow),
       requireApproval: requireApproval !== false,
-      ragContext,
-      teamContext,
-      integrationsContext,
-      workspaceStateSummary,
-      todayIso,
-      tomorrowIso,
+      conversationHistory: Array.isArray(conversationHistory) ? conversationHistory : [],
+      knowledgeDocs: scopedDocs,
+      teamMembers: Array.isArray(teamMembers) ? teamMembers : [],
+      integrations: Array.isArray(integrations) ? integrations : [],
+      workspaceState: {
+        workflows: workspaceWorkflows,
+        tasks: workspaceTasks,
+        pendingApprovalsCount,
+      },
     });
-
-    const history = buildGeminiChatHistory(conversationHistory, prompt.trim());
-    const primarySpec = resolveFreeModel(selectedMode);
-    const modelAttempts = [
-      primarySpec,
-      primarySpec.model === FREE_MODEL_GENERAL
-        ? resolveFreeModel('fast')
-        : resolveFreeModel('balanced'),
-    ];
-
-    let rawJsonText = '';
-    let usedModelLabel = primarySpec.label;
-    let lastErr: unknown = null;
-
-    for (const attempt of modelAttempts) {
-      try {
-        const chat = client.chats.create({
-          model: attempt.model,
-          history,
-          config: {
-            systemInstruction,
-            responseMimeType: 'application/json',
-            responseSchema: COMMAND_RESPONSE_SCHEMA,
-            ...(attempt.thinkingLevel
-              ? { thinkingConfig: { thinkingLevel: attempt.thinkingLevel } }
-              : {}),
-          },
-        });
-        const response = await chat.sendMessage({
-          message: prompt.trim(),
-        });
-        if (response && typeof response.text === 'string' && response.text.trim()) {
-          rawJsonText = response.text.trim();
-          usedModelLabel = attempt.label;
-          break;
-        }
-      } catch (err) {
-        lastErr = err;
-        console.error(`Gemini chat attempt failed (${attempt.model}):`, err);
-      }
-    }
-
-    if (!rawJsonText) {
-      const formatted = formatGeminiError(lastErr || new Error('Empty response from Gemini.'));
-      res.status(formatted.status).json({ error: formatted.message });
-      return;
-    }
-
-    let parsedResult: any;
-    try {
-      parsedResult = JSON.parse(rawJsonText);
-    } catch {
-      parsedResult = {
-        assistantMessage: rawJsonText,
-        spokenResponse: rawJsonText.slice(0, 220),
-        needsClarification: false,
-        clarifyingQuestions: [],
-        hasWorkflow: false,
-      };
-    }
-
-    const sanitizedWorkflow =
-      parsedResult.hasWorkflow || forceWorkflow
-        ? sanitizeProposedWorkflow(parsedResult.proposedWorkflow, activeDomain, tomorrowIso)
-        : null;
-
-    const assistantMessage = String(
-      parsedResult.assistantMessage ||
-        (sanitizedWorkflow
-          ? `Prepared the "${sanitizedWorkflow.title}" workflow for ${sanitizedWorkflow.recommendedTeam}.`
-          : 'Response ready.')
-    );
-    const spokenResponse = String(parsedResult.spokenResponse || assistantMessage).slice(0, 500);
-    const clarifyingQuestions = Array.isArray(parsedResult.clarifyingQuestions)
-      ? parsedResult.clarifyingQuestions.map((q: unknown) => String(q || '').trim()).filter(Boolean)
-      : [];
-
-    const trace = [
-      {
-        stage: `Gemini Model (${usedModelLabel})`,
-        status: 'completed' as const,
-        detail: `Domain role: ${activeDomain} · Multi-turn context (${history.length} prior turns)`,
-      },
-      {
-        stage: 'Enterprise Knowledge Base (RAG)',
-        status: ragCitations.length > 0 ? ('completed' as const) : ('warning' as const),
-        detail:
-          ragCitations.length > 0
-            ? `Grounded in ${ragCitations.length} excerpt(s) (${ragCitations[0].docTitle})`
-            : 'No matching documents in Knowledge Base',
-      },
-      {
-        stage: 'Workflow & Task Orchestration',
-        status: sanitizedWorkflow ? ('completed' as const) : ('pending' as const),
-        detail: sanitizedWorkflow
-          ? `Structured ${sanitizedWorkflow.tasks.length} task(s) & ${sanitizedWorkflow.steps.length} step(s) for ${sanitizedWorkflow.recommendedTeam}`
-          : 'Conversational response (no workflow drafted)',
-      },
-      {
-        stage: 'Human Approval Gate',
-        status: sanitizedWorkflow?.approvalRequest ? ('active' as const) : ('completed' as const),
-        detail: sanitizedWorkflow?.approvalRequest
-          ? `Approval required for ${sanitizedWorkflow.approvalRequest.actionType}`
-          : 'No external approval gate needed',
-      },
-    ];
 
     if (workspaceId && activeConvId) {
       dbStore.appendMessage({
         conversationId: activeConvId,
         workspaceId,
         role: 'assistant',
-        content: assistantMessage,
-        spokenText: spokenResponse,
+        content: pyResult.assistantMessage,
+        spokenText: pyResult.spokenResponse,
         metadata: {
-          modelUsed: usedModelLabel,
-          domain: activeDomain,
-          ragCitations,
-          proposedWorkflow: sanitizedWorkflow,
-          trace,
+          modelUsed: pyResult.modelUsed,
+          domain: pyResult.domain,
+          ragCitations: pyResult.ragCitations,
+          proposedWorkflow: pyResult.proposedWorkflow,
+          trace: pyResult.trace,
         },
       });
     }
 
     res.json({
-      assistantMessage,
-      spokenResponse,
-      needsClarification: Boolean(parsedResult.needsClarification),
-      clarifyingQuestions,
-      proposedWorkflow: sanitizedWorkflow,
-      modelUsed: usedModelLabel,
-      domain: activeDomain,
+      ...pyResult,
       conversationId: activeConvId,
-      ragCitations,
-      trace,
     });
   } catch (err) {
     console.error('AI command error:', err);
@@ -2179,15 +2089,11 @@ app.post('/api/ai/generate-workflow', requireAuth, async (req: AuthedRequest, re
     const selectedMode: FreeModelMode =
       modelMode === 'fast' || modelMode === 'deep' ? modelMode : 'balanced';
 
-    let workspaceName = 'Active Workspace';
     let scopedDocs: IncomingDoc[] = [];
-    let teamContext = `${activeDomain} Lead, Operations Specialist`;
-    let integrationsContext = 'Ticketing [SIMULATED], Email Notifications [SIMULATED], CRM [SIMULATED]';
+    let teamMembers: { name: string; role: string; department: string }[] = [];
 
     if (workspaceId && typeof workspaceId === 'string') {
       dbStore.requireWorkspacePermission(req.authUser!.uid, workspaceId, 'workflow.create');
-      const wsSummary = dbStore.listUserWorkspaces(req.authUser!.uid).find((w) => w.workspace.id === workspaceId);
-      if (wsSummary?.workspace?.name) workspaceName = wsSummary.workspace.name;
       const wsData = dbStore.getWorkspaceData(workspaceId, req.authUser!.uid);
       scopedDocs = wsData.documents.map((d) => ({
         id: d.id,
@@ -2195,70 +2101,22 @@ app.post('/api/ai/generate-workflow', requireAuth, async (req: AuthedRequest, re
         category: d.category,
         content: d.content,
       }));
-      if (wsData.members.length > 0) {
-        teamContext = wsData.members
-          .map((m) => `${m.name} (${m.roleId}, ${m.department})`)
-          .join('; ');
-      }
-      if (wsData.integrations.length > 0) {
-        integrationsContext = wsData.integrations
-          .map((i) => `${i.name} [${i.provider} / ${i.category}] (${i.status})`)
-          .join('; ');
-      }
+      teamMembers = wsData.members.map((m) => ({
+        name: m.name,
+        role: m.roleId,
+        department: m.department,
+      }));
     }
 
-    const ragCitations = scopedDocs.length > 0 ? await semanticRetrieve(prompt.trim(), scopedDocs, 3) : [];
-    const ragContext =
-      ragCitations.length > 0
-        ? ragCitations.map((c, i) => `[Doc ${i + 1}: ${c.docTitle}]\n${c.excerpt}`).join('\n\n')
-        : 'No matching runbooks in Knowledge Base.';
-
-    const todayIso = new Date().toISOString().slice(0, 10);
-    const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-
-    const systemInstruction = buildDomainSystemInstruction({
+    const pyRes = await postJsonToPython('/api/py/ai/generate-workflow', {
+      prompt: prompt.trim(),
       domain: activeDomain,
-      workspaceName,
-      forceWorkflow: true,
+      modelMode: selectedMode,
       requireApproval: requireApproval !== false,
-      ragContext,
-      teamContext,
-      integrationsContext,
-      workspaceStateSummary: `Generating a new workflow in domain "${activeDomain}".`,
-      todayIso,
-      tomorrowIso,
+      knowledgeDocs: scopedDocs,
+      teamMembers,
     });
-
-    const rawText = await callGeminiGenerate(
-      `Generate a complete, ready-to-execute operational workflow for this request:\n\n${prompt.trim()}`,
-      {
-        systemInstruction,
-        responseMimeType: 'application/json',
-        responseSchema: WORKFLOW_ONLY_RESPONSE_SCHEMA,
-      },
-      selectedMode
-    );
-
-    const parsed = JSON.parse(rawText.trim());
-    const proposedWorkflow = sanitizeProposedWorkflow(
-      parsed.proposedWorkflow,
-      activeDomain,
-      tomorrowIso
-    );
-
-    if (!proposedWorkflow) {
-      res.status(502).json({ error: 'Gemini returned an incomplete workflow draft. Please try rephrasing your prompt.' });
-      return;
-    }
-
-    res.json({
-      assistantMessage: String(parsed.assistantMessage || `Generated workflow "${proposedWorkflow.title}".`),
-      spokenResponse: String(parsed.spokenResponse || `Workflow ${proposedWorkflow.title} is ready to review.`),
-      proposedWorkflow,
-      ragCitations,
-      modelUsed: resolveFreeModel(selectedMode).label,
-      domain: activeDomain,
-    });
+    res.json(pyRes);
   } catch (err) {
     console.error('AI workflow generation error:', err);
     const formatted = formatGeminiError(err);
@@ -2461,53 +2319,14 @@ app.post('/api/ai/tts', requireAuth, async (req: AuthedRequest, res: Response) =
   }
 });
 
-// 6. Operational AI Insight Summary
+// 6. Operational AI Insight Summary (Python backend)
 app.post('/api/ai/insight', requireAuth, async (req: AuthedRequest, res: Response) => {
   try {
     const { summaryStats } = req.body as { summaryStats?: Record<string, unknown> };
-
-    const responseText = await callGeminiGenerate(
-      `Analyze these real-time FLOWSTATE operational metrics and produce an executive summary with 3 prioritized recommendations:\n${JSON.stringify(summaryStats || {}, null, 2)}`,
-      {
-        systemInstruction:
-          'You are an enterprise operations analyst inside FLOWSTATE. Base all observations strictly on the provided metrics. Target sections must be one of: command_center, workflows, tasks, knowledge_base, approvals, analytics, integrations.',
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            headline: { type: Type.STRING },
-            summary: { type: Type.STRING },
-            recommendations: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING },
-                  impact: { type: Type.STRING },
-                  actionLabel: { type: Type.STRING },
-                  targetSection: {
-                    type: Type.STRING,
-                    enum: [
-                      'command_center',
-                      'workflows',
-                      'tasks',
-                      'knowledge_base',
-                      'approvals',
-                      'analytics',
-                      'integrations',
-                    ],
-                  },
-                },
-                required: ['title', 'impact', 'actionLabel', 'targetSection'],
-              },
-            },
-          },
-          required: ['headline', 'summary', 'recommendations'],
-        },
-      },
-      'balanced'
-    );
-    res.json(JSON.parse(responseText.trim()));
+    const pyRes = await postJsonToPython('/api/py/ai/insight', {
+      summaryStats: summaryStats || {},
+    });
+    res.json(pyRes);
   } catch (err) {
     console.error('AI insight error:', err);
     const formatted = formatGeminiError(err);
@@ -2518,6 +2337,7 @@ app.post('/api/ai/insight', requireAuth, async (req: AuthedRequest, res: Respons
 // --- Server Startup (Vite Dev Middleware or Static Production Build) ---
 async function startServer() {
   await dbStore.init();
+  await startPythonBackend();
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

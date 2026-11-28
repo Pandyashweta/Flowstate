@@ -74,15 +74,15 @@ export async function ensureWorkspaceSeeded(user: User): Promise<void> {
 Document Owner: Identity & Auth Engineering | Last Updated: 2026-10-14 | SLA Tier: P1 (15-min response)
 
 PREVIOUS RECORDED INCIDENTS:
-1. INC-2026-0412 — SSO SAML Assertion Rejection ("Invalid SAML Response" / HTTP 401):
+1. INC-2026-0412 - SSO SAML Assertion Rejection ("Invalid SAML Response" / HTTP 401):
    - Root Cause: Customer IdP (Okta / Entra ID) certificate rotation occurred without updating the SP metadata fingerprint in Flowstate Identity Gateway.
    - Resolution: Verify active X.509 thumbprint in Admin SSO Console, flush Redis session cache for tenant ID, and ask tenant admin to re-upload IdP metadata XML. Average time to resolve: 18 minutes.
 
-2. INC-2026-0389 — Account Lockout Loop After Password Reset:
+2. INC-2026-0389 - Account Lockout Loop After Password Reset:
    - Root Cause: Rate-limiter stuck in Redis after 5 consecutive failed mobile app background token refreshes, locking the account for 60 minutes even after valid password reset.
    - Resolution: Check Auth Audit Stream for event AUTH_RATE_LIMIT_LOCK. Run internal command reset-auth-lockout --account-id <id>, revoke stale mobile refresh tokens, and send customer fresh magic login link.
 
-3. INC-2026-0295 — MFA TOTP Code Rejected ("Invalid Verification Code"):
+3. INC-2026-0295 - MFA TOTP Code Rejected ("Invalid Verification Code"):
    - Root Cause: Client device clock drift exceeding +/- 90 seconds or stale backup MFA enrollment after device replacement.
    - Resolution: Verify user identity via secondary verified email or enterprise account manager, issue single-use MFA recovery bypass valid for 15 minutes, and guide user to re-enroll authenticator app.
 

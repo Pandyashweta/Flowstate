@@ -281,35 +281,6 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
 
-        {/* Operational AI Insights Button */}
-        <button
-          type="button"
-          onClick={onRequestInsight}
-          disabled={insightLoading}
-          title="Operational AI Insights"
-          aria-label="Operational AI Insights"
-          className="hidden sm:flex items-center justify-center w-8 h-8 rounded-md text-[#525252] dark:text-[#D4D4D4] hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] transition-colors cursor-pointer disabled:opacity-50"
-        >
-          {insightLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Lightbulb className="w-4 h-4" />
-          )}
-        </button>
-
-        {/* PWA Install Button */}
-        {onInstallPwa && (
-          <button
-            type="button"
-            onClick={onInstallPwa}
-            title="Install FLOWSTATE standalone app"
-            aria-label="Install app"
-            className="hidden sm:flex items-center justify-center w-8 h-8 rounded-md text-[#525252] dark:text-[#D4D4D4] hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] transition-colors cursor-pointer"
-          >
-            <Download className="w-4 h-4" />
-          </button>
-        )}
-
         {/* Light / Dark Theme Toggle */}
         <button
           type="button"
@@ -320,22 +291,6 @@ export const TopBar: React.FC<TopBarProps> = ({
         >
           {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
-
-        {/* Docked AI Assistant Toggle (Plane Style) */}
-        {activeSection !== 'command_center' && (
-          <button
-            type="button"
-            onClick={onToggleAiDrawer}
-            className={`inline-flex items-center gap-1.5 px-2.5 h-8 rounded-md border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-              aiDrawerOpen
-                ? 'border-[#D4D4D4] dark:border-[#333333] bg-white dark:bg-[#1A1A1A] text-[#111111] dark:text-white'
-                : 'border-[#E5E5E5] dark:border-[#262626] bg-white dark:bg-[#161616] text-[#525252] dark:text-[#D4D4D4] hover:text-[#111111] dark:hover:text-white'
-            }`}
-          >
-            {aiDrawerOpen ? <X className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
-            <span>AI assistant</span>
-          </button>
-        )}
 
         {/* Account Menu */}
         <div className="relative">

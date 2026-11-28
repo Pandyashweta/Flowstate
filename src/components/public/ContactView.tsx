@@ -246,7 +246,7 @@ export const ContactView: React.FC<ContactViewProps> = ({
             >
               <div className="p-8 rounded-2xl bg-[#F7F7F7] border border-black/[0.08] space-y-6">
                 <p className="font-display text-lg sm:text-xl font-semibold text-black leading-relaxed">
-                  “FLOWSTATE changed how our operations team handles incident handoffs entirely. We stopped spending the first 15 minutes of every review recapping the last one — every runbook citation, owner, and approval is already documented before anyone closes their laptop.”
+                  “FLOWSTATE changed how our operations team handles incident handoffs entirely. We stopped spending the first 15 minutes of every review recapping the last one - every runbook citation, owner, and approval is already documented before anyone closes their laptop.”
                 </p>
 
                 <div className="pt-5 border-t border-black/[0.08] flex items-center gap-3.5">

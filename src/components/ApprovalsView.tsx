@@ -158,7 +158,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                       )}
                     </div>
                     <h3 className="font-display text-base font-bold text-[#111111] dark:text-white mt-1">
-                      {apr.workflowTitle} — {apr.actionType}
+                      {apr.workflowTitle} - {apr.actionType}
                     </h3>
                     <div className="text-[11px] text-[#737373] dark:text-[#737373] mt-0.5">
                       Requested by {apr.requestedBy} ·{' '}
@@ -257,7 +257,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                 ) : (
                   <div className="pt-2 border-t border-[#E5E5E5] dark:border-[#262626] text-xs text-[#737373] dark:text-[#737373]">
                     Reviewed by <span className="font-semibold text-[#262626] dark:text-[#E5E5E5]">{apr.reviewedBy || 'Approver'}</span>
-                    {apr.reviewerNote ? ` — "${apr.reviewerNote}"` : ''}
+                    {apr.reviewerNote ? ` - "${apr.reviewerNote}"` : ''}
                   </div>
                 )}
               </div>

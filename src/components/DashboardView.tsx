@@ -46,12 +46,8 @@ interface DashboardViewProps {
   approvals: ApprovalItem[];
   auditLogs: AuditLogItem[];
   onNavigate: (section: NavSection) => void;
-  onLaunchCommand: (prompt: string, inputMode: 'voice' | 'text') => void;
   onSelectWorkflow: (wf: Workflow) => void;
   onOpenNewWorkflow: () => void;
-  isVoiceListening: boolean;
-  onStartHeroVoice: () => void;
-  onStopHeroVoice: () => void;
 }
 
 const DEMO_PROMPT =
@@ -110,19 +106,15 @@ const STATUS_META: Record<
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   profile,
+  workspace,
   workflows,
   tasks,
   approvals,
   auditLogs,
   onNavigate,
-  onLaunchCommand,
   onSelectWorkflow,
   onOpenNewWorkflow,
-  isVoiceListening,
-  onStartHeroVoice,
-  onStopHeroVoice,
 }) => {
-  const [heroPrompt, setHeroPrompt] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   const metrics = useMemo(() => {
@@ -212,13 +204,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return workflows.filter((w) => w.status === statusFilter);
   }, [workflows, statusFilter]);
 
-  const handleHeroSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!heroPrompt.trim()) return;
-    onLaunchCommand(heroPrompt.trim(), 'text');
-    setHeroPrompt('');
-  };
-
   const handleExportCsv = () => {
     const rows = [
       ['Code', 'Title', 'Category', 'Status', 'Priority', 'Trigger', 'DurationMs', 'Team'],
@@ -244,60 +229,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   const firstName = (profile?.displayName || 'Operations Lead').split(' ')[0];
+  const deptCount = workspace?.departments?.length || 0;
 
   return (
     <div className="space-y-6 pb-8">
-      {/* 1. Plane-Style Monochrome Command Header */}
+      {/* 1. Company Workspace Overview Header (Separated from AI Page) */}
       <section className="rounded-xl border border-[#E5E5E5] dark:border-[#262626] bg-white dark:bg-[#121212] p-5 sm:p-6">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-          <div className="max-w-xl">
-            <p className="text-[11px] font-mono uppercase tracking-wider text-[#737373] mb-1">
-              Welcome back, {firstName}
-            </p>
-            <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-[#111111] dark:text-white">
-              Describe the workflow you want to automate
-            </h2>
-            <p className="text-xs text-[#737373] mt-1">
-              Use voice or text to create workflows, query your knowledge base, or coordinate team tasks.
-            </p>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex items-start gap-3.5 max-w-xl">
+            <img
+              src="/icons/favicon_io/apple-touch-icon.png"
+              alt="FLOWSTATE"
+              className="w-10 h-10 rounded-xl object-cover shrink-0 border border-[#E5E5E5] dark:border-[#262626]"
+            />
+            <div>
+              <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-[#111111] dark:text-white">
+                Welcome back, {firstName}
+              </h2>
+              <p className="text-xs text-[#737373] mt-1">
+                Manage your personal and work tasks, workflows, and documents in one workspace.
+              </p>
+            </div>
           </div>
 
-          <form onSubmit={handleHeroSubmit} className="w-full lg:max-w-lg">
-            <div className="flex items-center gap-2 rounded-lg border border-[#E5E5E5] dark:border-[#262626] bg-[#FAFAFA] dark:bg-[#161616] px-3 py-1.5 focus-within:border-[#111111] dark:focus-within:border-white transition-colors">
-              <Sparkles className="w-4 h-4 text-[#737373] shrink-0" />
-              <input
-                type="text"
-                value={heroPrompt}
-                onChange={(e) => setHeroPrompt(e.target.value)}
-                placeholder="Ask AI or describe a workflow..."
-                className="flex-1 min-w-0 bg-transparent text-xs sm:text-sm text-[#111111] dark:text-white placeholder:text-[#737373] focus:outline-none py-1.5"
-              />
-              <button
-                type="button"
-                onClick={isVoiceListening ? onStopHeroVoice : onStartHeroVoice}
-                title={isVoiceListening ? 'Stop voice capture' : 'Speak workflow command'}
-                className={`flex items-center justify-center w-8 h-8 rounded-md transition-colors cursor-pointer shrink-0 ${
-                  isVoiceListening
-                    ? 'bg-red-500 text-white'
-                    : 'text-[#525252] dark:text-[#D4D4D4] hover:bg-[#EFEFEF] dark:hover:bg-[#262626]'
-                }`}
-              >
-                {isVoiceListening ? (
-                  <AudioLines className="w-4 h-4 animate-pulse" />
-                ) : (
-                  <Mic className="w-4 h-4" />
-                )}
-              </button>
-              <button
-                type="submit"
-                aria-label="Run AI workflow command"
-                className="px-3 h-8 rounded-md bg-[#111111] dark:bg-white text-white dark:text-[#111111] text-xs font-semibold hover:opacity-90 flex items-center justify-center gap-1 transition-opacity cursor-pointer shrink-0"
-              >
-                <span>Run</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </form>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={onOpenNewWorkflow}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#111111] dark:bg-white text-white dark:text-[#111111] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Workflow</span>
+            </button>
+          </div>
         </div>
       </section>
 
@@ -321,7 +285,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   Workflow
                 </div>
                 <div className="text-xs text-[#737373] truncate">
-                  Create from voice or blueprint
+                  Create and track workflows
                 </div>
               </div>
             </div>
@@ -457,9 +421,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </span>
           </div>
 
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartSeries} margin={{ top: 8, right: 8, left: -24, bottom: 0 }}>
+          {auditLogs.length > 0 ? (
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartSeries} margin={{ top: 8, right: 8, left: -24, bottom: 0 }}>
                 <defs>
                   <linearGradient id="execSuccessGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#737373" stopOpacity={0.22} />
@@ -514,9 +479,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   strokeWidth={2}
                   fill="url(#execFailGrad)"
                 />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="py-6 border-t border-[#E5E5E5] dark:border-[#262626] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-[#111111] dark:text-white">
+                  {tasks.length > 0
+                    ? `${tasks.filter((t) => t.status !== 'completed').length} open task(s) across your workspace`
+                    : 'No tasks or workflow runs yet'}
+                </div>
+                <p className="text-xs text-[#737373]">
+                  Add personal or work tasks, upload SOPs to Knowledge Base, or create a workflow to see live activity here.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate('tasks')}
+                className="px-3.5 py-2 rounded-lg border border-[#E5E5E5] dark:border-[#262626] text-xs font-medium text-[#111111] dark:text-white hover:bg-[#FAFAFA] dark:hover:bg-[#1A1A1A] cursor-pointer shrink-0"
+              >
+                Open Tasks →
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Recent Activity (Exact Screenshot 2 Right Card) */}
@@ -570,7 +556,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           hour: '2-digit',
                           minute: '2-digit',
                         })
-                      : '—'}
+                      : '-'}
                     {log.actor ? ` · ${log.actor}` : ''}
                     {log.isSimulated ? ' · Simulated' : ''}
                   </div>
@@ -818,7 +804,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             hour: '2-digit',
                             minute: '2-digit',
                           })
-                        : '—'}
+                        : '-'}
                     </td>
                     <td className="py-3 pl-4 text-right">
                       <button

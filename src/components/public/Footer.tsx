@@ -68,15 +68,15 @@ const INFO_MODAL_CONTENT: Record<
       'We are a small, high-craft team of systems engineers, product designers, and applied AI researchers.',
     sections: [
       {
-        heading: 'Staff Full-Stack Systems Engineer — Remote / SF',
+        heading: 'Staff Full-Stack Systems Engineer - Remote / SF',
         body: 'Architect multi-tenant workflow orchestration engines, low-latency voice pipelines, and verifiable RBAC governance rails.',
       },
       {
-        heading: 'Senior Product Designer — Remote / NYC',
+        heading: 'Senior Product Designer - Remote / NYC',
         body: 'Craft calm, high-density enterprise interfaces, voice interaction patterns, and crisp spatial design systems across desktop and mobile.',
       },
       {
-        heading: 'Applied AI Engineer (RAG & Tool Calling) — Remote / London',
+        heading: 'Applied AI Engineer (RAG & Tool Calling) - Remote / London',
         body: 'Improve retrieval precision, citation grounding, and structured tool execution over enterprise PDF, DOCX, and Markdown runbooks.',
       },
     ],
@@ -90,7 +90,7 @@ const INFO_MODAL_CONTENT: Record<
     sections: [
       {
         heading: 'Data Collection & Minimization',
-        body: 'We collect only the information required to operate your account, workspaces, and waitlist enrollment — such as your email address, workspace configuration, uploaded knowledge documents, and operational audit records.',
+        body: 'We collect only the information required to operate your account, workspaces, and waitlist enrollment - such as your email address, workspace configuration, uploaded knowledge documents, and operational audit records.',
       },
       {
         heading: 'Tenant Isolation & AI Grounding',
@@ -123,7 +123,7 @@ const INFO_MODAL_CONTENT: Record<
   },
   cookies: {
     kicker: 'Legal · Cookie Policy',
-    title: 'Essential cookies only — zero third-party ad tracking.',
+    title: 'Essential cookies only - zero third-party ad tracking.',
     subtitle: 'Effective November 2026 · How FLOWSTATE handles browser storage and sessions.',
     sections: [
       {
@@ -222,61 +222,8 @@ export const Footer: React.FC<FooterProps> = ({
                   <span className="text-black font-bold">.</span>
                 </button>
                 <p className="text-sm text-neutral-600 leading-relaxed max-w-xs">
-                  Voice-driven enterprise workflows that capture every instruction, runbook citation, and approval — automatically.
+                  Manage personal and professional tasks, structured workflows, knowledge base docs, and approvals in one workspace.
                 </p>
-              </div>
-
-              {/* Compact Waitlist Enrollment */}
-              <div className="max-w-xs space-y-2">
-                {!joinedSpot ? (
-                  <form onSubmit={handleQuickWaitlistSubmit} noValidate className="space-y-2">
-                    <div className="flex items-center gap-1.5 p-1 rounded-lg border border-neutral-300 bg-[#F7F7F7] focus-within:border-black focus-within:bg-white transition-colors">
-                      <label htmlFor="footer-waitlist-email" className="sr-only">
-                        Work email for waitlist
-                      </label>
-                      <input
-                        id="footer-waitlist-email"
-                        type="email"
-                        autoComplete="email"
-                        value={waitlistEmail}
-                        onChange={(e) => {
-                          setWaitlistEmail(e.target.value);
-                          if (submitError) setSubmitError(null);
-                        }}
-                        placeholder="name@company.com"
-                        className="flex-1 min-w-0 h-9 px-2.5 bg-transparent text-xs text-black placeholder:text-neutral-400 focus:outline-none"
-                      />
-                      <button
-                        type="submit"
-                        disabled={submitting}
-                        className="h-9 px-3.5 rounded-md bg-black hover:bg-neutral-800 text-white font-semibold text-xs inline-flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-60"
-                      >
-                        {submitting ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <>
-                            <span>Join</span>
-                            <ArrowRight className="w-3 h-3" />
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    {submitError && (
-                      <div role="alert" className="flex items-center gap-1.5 text-[11px] text-red-700">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                        <span>{submitError}</span>
-                      </div>
-                    )}
-                  </form>
-                ) : (
-                  <div className="p-3 rounded-lg border border-neutral-300 bg-[#F7F7F7] space-y-1">
-                    <div className="flex items-center gap-1.5 text-black font-semibold">
-                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                      <span>Spot #{joinedSpot.position.toLocaleString()} reserved</span>
-                    </div>
-                    <p className="text-[11px] text-neutral-600 truncate">{joinedSpot.email}</p>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -284,15 +231,6 @@ export const Footer: React.FC<FooterProps> = ({
             <div className="lg:col-span-2 space-y-3">
               <div className="font-semibold text-black">Navigation</div>
               <ul className="space-y-2.5 text-neutral-600">
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => handleSectionLink('features')}
-                    className="hover:text-black transition-colors cursor-pointer"
-                  >
-                    Features
-                  </button>
-                </li>
                 <li>
                   <button
                     type="button"
@@ -305,19 +243,10 @@ export const Footer: React.FC<FooterProps> = ({
                 <li>
                   <button
                     type="button"
-                    onClick={() => (onOpenBlog ? onOpenBlog() : handleSectionLink('blog'))}
+                    onClick={() => handleSectionLink('features')}
                     className="hover:text-black transition-colors cursor-pointer"
                   >
-                    Blog
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => handleSectionLink('faq')}
-                    className="hover:text-black transition-colors cursor-pointer"
-                  >
-                    FAQ
+                    Features
                   </button>
                 </li>
                 <li>
@@ -366,114 +295,11 @@ export const Footer: React.FC<FooterProps> = ({
                 <li>
                   <button
                     type="button"
-                    onClick={onInstallPwa}
-                    className="hover:text-black transition-colors cursor-pointer"
-                  >
-                    Install App
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
                     onClick={() => setActiveModal('about')}
                     className="hover:text-black transition-colors cursor-pointer"
                   >
                     About
                   </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => setActiveModal('careers')}
-                    className="hover:text-black transition-colors cursor-pointer"
-                  >
-                    Careers
-                  </button>
-                </li>
-              </ul>
-            </div>
-
-            {/* Column 3: Legal (Exact Arixo legal links) */}
-            <div className="lg:col-span-2 space-y-3">
-              <div className="font-semibold text-black">Legal</div>
-              <ul className="space-y-2.5 text-neutral-600">
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => setActiveModal('terms')}
-                    className="hover:text-black transition-colors cursor-pointer"
-                  >
-                    Terms &amp; Conditions
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => setActiveModal('privacy')}
-                    className="hover:text-black transition-colors cursor-pointer"
-                  >
-                    Privacy Policy
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => setActiveModal('cookies')}
-                    className="hover:text-black transition-colors cursor-pointer"
-                  >
-                    Cookie Policy
-                  </button>
-                </li>
-              </ul>
-            </div>
-
-            {/* Column 4: Social (Exact Arixo social links) */}
-            <div className="lg:col-span-2 space-y-3">
-              <div className="font-semibold text-black">Social</div>
-              <ul className="space-y-2.5 text-neutral-600">
-                <li>
-                  <a
-                    href="https://x.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 hover:text-black transition-colors"
-                  >
-                    <span>X</span>
-                    <ArrowUpRight className="w-3 h-3" />
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://www.linkedin.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 hover:text-black transition-colors"
-                  >
-                    <span>LinkedIn</span>
-                    <ArrowUpRight className="w-3 h-3" />
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://github.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 hover:text-black transition-colors"
-                  >
-                    <span>GitHub</span>
-                    <ArrowUpRight className="w-3 h-3" />
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://www.youtube.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 hover:text-black transition-colors"
-                  >
-                    <span>YouTube</span>
-                    <ArrowUpRight className="w-3 h-3" />
-                  </a>
                 </li>
               </ul>
             </div>
@@ -481,30 +307,7 @@ export const Footer: React.FC<FooterProps> = ({
 
           {/* Quiet Bottom Bar */}
           <div className="pt-6 border-t border-neutral-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs text-neutral-500">
-            <span>© 2026 FLOWSTATE. All rights reserved.</span>
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-              <button
-                type="button"
-                onClick={() => setActiveModal('terms')}
-                className="hover:text-black transition-colors cursor-pointer whitespace-nowrap"
-              >
-                Terms &amp; Conditions
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveModal('privacy')}
-                className="hover:text-black transition-colors cursor-pointer whitespace-nowrap"
-              >
-                Privacy Policy
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveModal('cookies')}
-                className="hover:text-black transition-colors cursor-pointer whitespace-nowrap"
-              >
-                Cookie Policy
-              </button>
-            </div>
+            <span>© 2026 FLOWSTATE. All rights reserved. By Pandya Shweta</span>
           </div>
         </div>
       </footer>

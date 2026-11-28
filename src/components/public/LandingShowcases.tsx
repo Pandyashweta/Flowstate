@@ -18,29 +18,29 @@ import {
 } from './MotionPrimitives';
 
 /* ============================================================================
- * PROBLEM SECTION — 3 LIVING BENTO VISUALS
+ * PROBLEM SECTION - 3 LIVING BENTO VISUALS
  * ========================================================================== */
 
 const PROBLEM_TRANSCRIPT_LINES = [
   {
-    time: '0:04',
-    speaker: 'Alex Kim',
-    text: 'Rotate Q4 staging keys — Security confirmed the cutoff.',
+    time: 'AI',
+    speaker: 'Command Center',
+    text: 'Drafted Q4 Security Access Audit with 3 tasks & Owner gate.',
   },
   {
-    time: '0:09',
-    speaker: 'Alex Kim',
-    text: 'Before we execute, verify Section 3 of the 2026 retention policy.',
+    time: 'RAG',
+    speaker: 'Knowledge Base',
+    text: 'Grounded in Security_Runbook_2026.pdf (Section 3.2 · 94%).',
   },
   {
-    time: '0:18',
-    speaker: 'Alex Kim',
-    text: 'Lock it. Assign Engineering and queue Owner approval.',
+    time: 'GATE',
+    speaker: 'Approvals Queue',
+    text: 'Assigned to Engineering · queued for Owner sign-off.',
   },
 ];
 
 export const ProblemCardTranscript: React.FC = () => {
-  const [activeLine, setActiveLine] = useState(2);
+  const [activeLine, setActiveLine] = useState(0);
   const [paused, setPaused] = useState(false);
 
   useEffect(() => {
@@ -58,18 +58,15 @@ export const ProblemCardTranscript: React.FC = () => {
       className="h-[280px] rounded-2xl border border-black/[0.08] bg-[#F7F7F7] p-5 flex flex-col justify-between overflow-hidden"
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <img
-            src="/src/assets/images/waitlist_avatar_engineer_1795775958069.jpg"
-            alt="Alex Kim"
-            referrerPolicy="no-referrer"
-            className="w-7 h-7 rounded-full object-cover grayscale ring-1 ring-black/10"
-          />
-          <span className="text-xs font-medium text-black">Alex Kim</span>
+        <div className="flex items-center gap-2">
+          <span className="w-6 h-6 rounded-md bg-black text-white flex items-center justify-center shrink-0">
+            <Mic className="w-3.5 h-3.5" />
+          </span>
+          <span className="text-xs font-semibold text-black">AI Command Center</span>
         </div>
-        <div className="flex items-center gap-2.5">
-          <CompactAudioVisualizer bars={6} height={14} active={!paused} />
-          <span className="text-[11px] font-mono font-medium text-black">Capturing</span>
+        <div className="flex items-center gap-2">
+          <CompactAudioVisualizer bars={5} height={12} active={!paused} />
+          <span className="text-[11px] font-mono font-medium text-neutral-600">Python AI</span>
         </div>
       </div>
 
@@ -89,11 +86,7 @@ export const ProblemCardTranscript: React.FC = () => {
                   : 'bg-white text-neutral-600 border-black/[0.06] hover:border-black/20'
               }`}
             >
-              <span
-                className={`font-mono text-[11px] tabular-nums shrink-0 ${
-                  isFocused ? 'text-neutral-400' : 'text-neutral-400'
-                }`}
-              >
+              <span className="font-mono text-[10px] tabular-nums shrink-0 mt-0.5 text-neutral-400">
                 {item.time}
               </span>
               <span className="leading-snug">{item.text}</span>
@@ -106,9 +99,9 @@ export const ProblemCardTranscript: React.FC = () => {
 };
 
 const OWNERSHIP_ROWS = [
-  { text: 'Extract stale IAM credentials', owner: 'Engineering' },
-  { text: 'Cite Security_Runbook_2026.pdf', owner: 'Security' },
-  { text: 'Route revocation for Owner sign-off', owner: 'Approvals' },
+  { text: 'WF-104 · Q4 Security Access Audit', owner: 'Engineering' },
+  { text: 'WF-103 · Vendor Onboarding Gate', owner: 'Security' },
+  { text: 'WF-102 · P1 Incident Escalation', owner: 'Approvals' },
 ];
 
 export const ProblemCardOwnership: React.FC = () => {
@@ -130,13 +123,21 @@ export const ProblemCardOwnership: React.FC = () => {
       className="h-[280px] rounded-2xl border border-black/[0.08] bg-[#F7F7F7] p-5 flex flex-col justify-between overflow-hidden"
     >
       <div className="flex items-center justify-between text-[11px] text-neutral-500">
-        <span>Today · 9:00 AM · 5 participants</span>
-        <span className="font-mono font-medium text-black">Grounded</span>
+        <span className="font-semibold text-black">Workflows &amp; Tasks</span>
+        <span className="font-mono font-medium text-black">RBAC · Active</span>
       </div>
 
-      {/* Living Arixo-style Compact Audio Visualizer */}
-      <div className="flex items-center justify-center py-1">
-        <CompactAudioVisualizer bars={22} height={38} active />
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: 'Active', val: '5' },
+          { label: 'Open Tasks', val: '12' },
+          { label: 'Approvals', val: '3' },
+        ].map((stat) => (
+          <div key={stat.label} className="rounded-lg bg-white border border-black/[0.06] px-2.5 py-2">
+            <div className="text-[10px] text-neutral-500">{stat.label}</div>
+            <div className="font-display text-sm font-bold text-black tabular-nums">{stat.val}</div>
+          </div>
+        ))}
       </div>
 
       <div className="space-y-2 text-[12px]">
@@ -214,13 +215,13 @@ export const ProblemCardAsyncBrief: React.FC = () => {
                     />
                   )}
                   <span className="relative z-10">
-                    {key === 'brief' ? 'Workflow Brief' : 'Audit Receipt'}
+                    {key === 'brief' ? 'RAG Citation' : 'Audit Receipt'}
                   </span>
                 </button>
               );
             })}
           </div>
-          <span className="font-mono text-[10px] text-neutral-500">Synced</span>
+          <span className="font-mono text-[10px] text-neutral-500">Verified</span>
         </div>
 
         <AnimatePresence mode="wait">
@@ -233,7 +234,7 @@ export const ProblemCardAsyncBrief: React.FC = () => {
               transition={{ duration: 0.22, ease: ARIXO_EASE }}
               className="space-y-1 text-neutral-600 text-[11px]"
             >
-              <li>· Cited Security_Runbook_2026.pdf · Sec 3.2</li>
+              <li>· Security_Runbook_2026.pdf · 94% match</li>
               <li>· 3 tasks assigned across Engineering &amp; IT</li>
               <li>· Owner approval logged · CSV ready</li>
             </motion.ul>
@@ -254,30 +255,21 @@ export const ProblemCardAsyncBrief: React.FC = () => {
         </AnimatePresence>
       </div>
 
-      <motion.div
-        whileHover={{ y: -2 }}
-        transition={ARIXO_SNAPPY_SPRING}
-        className="p-3 rounded-xl bg-white border border-black/[0.07] flex items-start gap-2.5 text-[12px]"
-      >
-        <img
-          src="/src/assets/images/waitlist_avatar_designer_1795775956238.jpg"
-          alt="Jamie"
-          referrerPolicy="no-referrer"
-          className="w-6 h-6 rounded-full object-cover grayscale shrink-0 mt-0.5 ring-1 ring-black/10"
-        />
-        <div>
-          <div className="text-[11px] text-neutral-500">Jamie · just now</div>
-          <div className="text-black mt-0.5 leading-snug">
-            No follow-up needed — every step and cited policy is already in the workspace.
-          </div>
+      <div className="p-3 rounded-xl bg-white border border-black/[0.07] flex items-center justify-between gap-2 text-[11px]">
+        <div className="flex items-center gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-black shrink-0" />
+          <span className="font-medium text-black truncate">
+            Tenant-isolated audit trail &amp; exports
+          </span>
         </div>
-      </motion.div>
+        <span className="font-mono text-[10px] text-neutral-500 shrink-0">CSV · JSON</span>
+      </div>
     </div>
   );
 };
 
 /* ============================================================================
- * FEATURES SECTION — 4 LIVING INTERACTIVE FEATURE STAGES
+ * FEATURES SECTION - 4 LIVING INTERACTIVE FEATURE STAGES
  * ========================================================================== */
 
 const VOICE_PIPELINE_STEPS = [
@@ -319,8 +311,8 @@ export const FeatureVisualVoice: React.FC = () => {
 
       <div className="p-5 rounded-xl bg-white border border-black/[0.07] space-y-3">
         <div className="flex items-center justify-between text-[11px] text-neutral-500">
-          <span>Spoken directive</span>
-          <span className="font-mono tabular-nums text-black">0:14 · Live</span>
+          <span>Operational directive</span>
+          <span className="font-mono tabular-nums text-black">IT Operations · Python AI</span>
         </div>
         <p className="text-sm sm:text-[15px] text-black leading-relaxed font-normal">
           “Audit Q4 access logs, create remediation tasks for Engineering, and pause production revocations for Owner approval.”

@@ -94,7 +94,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
       <div className="rounded-2xl bg-[#FAFAFA] dark:bg-[#161616] border border-[#E5E5E5] dark:border-[#262626] p-4 flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
         <div className="text-xs text-amber-950 dark:text-amber-200 leading-relaxed">
-          <span className="font-semibold">Prototype Mode — Simulated External Integrations:</span>{' '}
+          <span className="font-semibold">Prototype Mode - Simulated External Integrations:</span>{' '}
           All enterprise connectors below run in clearly labeled{' '}
           <span className="font-mono font-semibold">Simulated Mode</span> when external OAuth/API
           credentials are not connected. Every simulated action produces a verifiable{' '}

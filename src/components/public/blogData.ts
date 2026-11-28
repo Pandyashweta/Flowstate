@@ -70,7 +70,7 @@ export const BLOG_POSTS: BlogPost[] = [
           'Voice-driven workflow orchestration treats spoken language as a structured input layer. When you speak a directive into the FLOWSTATE Command Center, the system separates intent, scope, department routing, and required approvals into an actionable draft within seconds.',
         ],
         callout:
-          'A transcript records what happened in the past. An orchestrated workflow defines what happens next — with clear owners and policy checks attached.',
+          'A transcript records what happened in the past. An orchestrated workflow defines what happens next - with clear owners and policy checks attached.',
       },
       {
         heading: 'Keeping clarity across distributed teams',
@@ -107,14 +107,14 @@ export const BLOG_POSTS: BlogPost[] = [
         heading: 'Why full autonomy fails in enterprise operations',
         paragraphs: [
           'Early automation tools promised zero-touch execution, yet most security and engineering leaders quickly switched them off. Nobody wants an automated agent revoking production credentials, messaging external vendors, or modifying billing pipelines without human review.',
-          'The answer is not abandoning automation — it is placing a clean, lightweight decision gate right before irreversible actions occur.',
+          'The answer is not abandoning automation - it is placing a clean, lightweight decision gate right before irreversible actions occur.',
         ],
       },
       {
         heading: 'Structuring 5-tier role boundaries',
         paragraphs: [
           'Effective governance starts with clear ownership. In FLOWSTATE, every Organization workspace separates permissions across Owners, Admins, Managers, Members, and Viewers. Any member can propose a workflow through voice or text, while sensitive actions automatically pause in the Approvals Queue.',
-          'Instead of routing approval requests through buried email threads, reviewers see the exact trigger prompt, every generated step, and the internal policy document supporting the action — all on one screen.',
+          'Instead of routing approval requests through buried email threads, reviewers see the exact trigger prompt, every generated step, and the internal policy document supporting the action - all on one screen.',
         ],
         callout:
           'Fast approvals require high context. When the reviewer sees the exact diff and policy citation in one view, sign-off takes ten seconds instead of two days.',
@@ -122,7 +122,7 @@ export const BLOG_POSTS: BlogPost[] = [
       {
         heading: 'Turning every approval into a compliance asset',
         paragraphs: [
-          'Every approve or reject decision carries an immutable timestamp, actor identity, and reviewer rationale. When quarterly security audits arrive, your team does not need to reconstruct who authorized a production change — the complete history is already organized and ready for export.',
+          'Every approve or reject decision carries an immutable timestamp, actor identity, and reviewer rationale. When quarterly security audits arrive, your team does not need to reconstruct who authorized a production change - the complete history is already organized and ready for export.',
         ],
       },
     ],
@@ -153,7 +153,7 @@ export const BLOG_POSTS: BlogPost[] = [
         heading: 'The problem with generic operational checklists',
         paragraphs: [
           'Ask a standard language model to draft an incident escalation or vendor onboarding flow, and it will return plausible-sounding advice that has nothing to do with how your company actually operates. It will miss your legal thresholds, internal SLAs, and escalation rosters.',
-          'Operational teams do not need creative improvisation — they need faithful execution of the playbooks they already spent months writing.',
+          'Operational teams do not need creative improvisation - they need faithful execution of the playbooks they already spent months writing.',
         ],
       },
       {
@@ -198,7 +198,7 @@ export const BLOG_POSTS: BlogPost[] = [
       {
         heading: 'Why one account still needs strict workspace walls',
         paragraphs: [
-          'Modern operators wear multiple hats. You might manage private personal reminders in the morning and oversee an enterprise IT operations organization ten minutes later. Sharing one sign-in should be effortless — yet the underlying data must never blur together.',
+          'Modern operators wear multiple hats. You might manage private personal reminders in the morning and oversee an enterprise IT operations organization ten minutes later. Sharing one sign-in should be effortless - yet the underlying data must never blur together.',
           'In FLOWSTATE, every workflow, task, knowledge document, department, and approval record is bound to an explicit workspace ID. Switching workspaces resets client context cleanly and enforces server-side membership validation on every request.',
         ],
       },
@@ -206,7 +206,7 @@ export const BLOG_POSTS: BlogPost[] = [
         heading: 'Zero fake demo clutter in production workspaces',
         paragraphs: [
           'Many enterprise apps pre-populate new accounts with dummy tasks and synthetic logs that pollute search results and confuse audit reviewers. Every new Personal or Organization workspace in FLOWSTATE starts completely clean.',
-          'You create your own departments, upload your own runbooks, and invite real teammates — so every entry in your dashboard represents authentic operational work.',
+          'You create your own departments, upload your own runbooks, and invite real teammates - so every entry in your dashboard represents authentic operational work.',
         ],
         callout:
           'Trust in an audit log begins with data hygiene. If every record reflects real user action, compliance reviews become straightforward.',

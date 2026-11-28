@@ -1265,7 +1265,7 @@ export const WorkflowsView: React.FC<WorkflowsViewProps> = ({
                                   hour: '2-digit',
                                   minute: '2-digit',
                                 })
-                              : '—'}
+                              : '-'}
                           </span>
                         </div>
                         <div className="text-[#525252] dark:text-[#D4D4D4]">{log.summary}</div>

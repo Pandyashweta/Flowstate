@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Briefcase, Building2, Loader2 } from 'lucide-react';
-import { AiAssistantDrawer } from './components/AiAssistantDrawer';
 import { AnalyticsView } from './components/AnalyticsView';
 import { ApprovalsView } from './components/ApprovalsView';
 import { AuthView } from './components/auth/AuthView';
-import { CommandCenterView } from './components/CommandCenterView';
 import { DashboardView } from './components/DashboardView';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { InstallPromptModal } from './components/InstallPromptModal';
@@ -23,7 +21,6 @@ import { TopBar } from './components/TopBar';
 import { WelcomeModal } from './components/WelcomeModal';
 import { WorkflowsView } from './components/WorkflowsView';
 import { useFlowstateData } from './hooks/useFlowstateData';
-import { useVoice } from './hooks/useVoice';
 import { apiPostJson } from './lib/api';
 import {
   AgentTraceStep,
@@ -78,7 +75,7 @@ function FlowstateApp() {
   }, [themePreference]);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const [newWorkflowModalOpen, setNewWorkflowModalOpen] = useState(false);
-  const [newWorkflowInitialTab, setNewWorkflowInitialTab] = useState<'ai' | 'manual'>('ai');
+  const [newWorkflowInitialTab, setNewWorkflowInitialTab] = useState<'ai' | 'manual'>('manual');
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
 
   // Public website & Auth state
@@ -144,25 +141,10 @@ function FlowstateApp() {
     [data.activeWorkspace?.departments]
   );
 
-  const voice = useVoice(data.profile?.voiceLanguage || 'en-US');
-
-  // Capture PWA beforeinstallprompt event
-  useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
-
-  // Sync user voice & theme preferences when profile loads
+  // Sync user theme preferences when profile loads
   useEffect(() => {
     if (data.profile) {
       setAutoSpeak(data.profile.autoSpeakResponses ?? true);
-      if (data.profile.voiceLanguage) {
-        voice.setLanguage(data.profile.voiceLanguage);
-      }
       if (
         data.profile.themePreference === 'light' ||
         data.profile.themePreference === 'dark' ||
@@ -171,9 +153,7 @@ function FlowstateApp() {
         setThemePreference(data.profile.themePreference);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    data.profile?.voiceLanguage,
     data.profile?.autoSpeakResponses,
     data.profile?.themePreference,
   ]);
@@ -208,10 +188,9 @@ function FlowstateApp() {
   }, []);
 
   const handleClearConversation = useCallback(() => {
-    voice.stopSpeaking();
     setMessages([]);
     setCommandError(null);
-  }, [voice]);
+  }, []);
 
   const handleSendCommand = useCallback(
     async (
@@ -221,7 +200,6 @@ function FlowstateApp() {
     ) => {
       if (!prompt.trim() || isCommandProcessing) return;
       setCommandError(null);
-      voice.stopSpeaking();
 
       const userMsg: CommandMessage = {
         id: `usr-${Date.now()}`,
@@ -294,10 +272,6 @@ function FlowstateApp() {
         };
 
         setMessages((prev) => [...prev, assistantMsg]);
-
-        if (autoSpeak && assistantMsg.spokenText && voice.isTtsSupported) {
-          void voice.speak(assistantMsg.spokenText);
-        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to process AI command.';
         setCommandError(msg);
@@ -315,27 +289,8 @@ function FlowstateApp() {
       data.integrations,
       data.teamMembers,
       data.profile?.requireApprovalForExternal,
-      autoSpeak,
-      voice,
     ]
   );
-
-  const handleLaunchFromHero = useCallback(
-    (prompt: string, inputMode: 'voice' | 'text') => {
-      setActiveSection('command_center');
-      void handleSendCommand(prompt, inputMode);
-    },
-    [handleSendCommand]
-  );
-
-  const handleStartHeroVoice = useCallback(() => {
-    voice.startListening((finalText) => {
-      if (finalText.trim()) {
-        setActiveSection('command_center');
-        void handleSendCommand(finalText.trim(), 'voice');
-      }
-    });
-  }, [voice, handleSendCommand]);
 
   const handleCommitWorkflow = useCallback(
     async (
@@ -691,7 +646,7 @@ function FlowstateApp() {
         />
 
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-white dark:bg-[#0A0A0A]">
-          {/* Plane-Style View Sub-Header Bar — only for primary workspace sections */}
+          {/* Plane-Style View Sub-Header Bar - only for primary workspace sections */}
           {(['overview', 'workflows', 'tasks', 'knowledge_base', 'approvals', 'analytics'] as const).includes(activeSection as 'overview' | 'workflows' | 'tasks' | 'knowledge_base' | 'approvals' | 'analytics') && (
           <div className="h-11 px-4 sm:px-5 border-b border-[#E5E5E5] dark:border-[#262626] flex items-center justify-between gap-4 shrink-0 bg-white dark:bg-[#0E0E0E]">
             <div className="flex items-center gap-5 min-w-0 overflow-x-auto no-scrollbar">
@@ -787,42 +742,11 @@ function FlowstateApp() {
                 approvals={data.approvals}
                 auditLogs={data.auditLogs}
                 onNavigate={handleNavigate}
-                onLaunchCommand={handleLaunchFromHero}
                 onSelectWorkflow={(wf) => {
                   setSelectedWorkflow(wf);
                   setActiveSection('workflows');
                 }}
                 onOpenNewWorkflow={() => setNewWorkflowModalOpen(true)}
-                isVoiceListening={voice.isListening}
-                onStartHeroVoice={handleStartHeroVoice}
-                onStopHeroVoice={voice.stopListening}
-              />
-            )}
-
-            {activeSection === 'command_center' && (
-              <CommandCenterView
-                messages={messages}
-                isProcessing={isCommandProcessing}
-                error={commandError}
-                activeDomain={activeDomain}
-                domains={availableDomains}
-                onChangeDomain={setActiveDomain}
-                modelMode={modelMode}
-                onChangeModelMode={setModelMode}
-                onClearConversation={handleClearConversation}
-                onSendCommand={handleSendCommand}
-                onCommitWorkflow={handleCommitWorkflow}
-                onApproveInline={handleApproveInline}
-                approvals={data.approvals}
-                knowledgeDocs={data.knowledgeDocs}
-                integrations={data.integrations}
-                teamMembers={data.teamMembers}
-                profile={data.profile}
-                workspace={data.activeWorkspace}
-                voice={voice}
-                autoSpeak={autoSpeak}
-                onToggleAutoSpeak={() => setAutoSpeak((v) => !v)}
-                onNavigate={handleNavigate}
               />
             )}
 
@@ -924,46 +848,6 @@ function FlowstateApp() {
             </div>
           </main>
         </div>
-
-        {/* Collapsible Docked AI Drawer */}
-        {aiDrawerOpen && activeSection !== 'command_center' && (
-          <AiAssistantDrawer
-            open={aiDrawerOpen}
-            onClose={() => setAiDrawerOpen(false)}
-            messages={messages}
-            isProcessing={isCommandProcessing}
-            error={commandError}
-            voiceError={voice.voiceError}
-            onClearVoiceError={voice.clearVoiceError}
-            activeDomain={activeDomain}
-            domains={availableDomains}
-            onChangeDomain={setActiveDomain}
-            modelMode={modelMode}
-            onChangeModelMode={setModelMode}
-            onClearConversation={handleClearConversation}
-            onSendCommand={handleSendCommand}
-            onOpenFullCommandCenter={() => {
-              setAiDrawerOpen(false);
-              setActiveSection('command_center');
-            }}
-            isListening={voice.isListening}
-            isTranscribing={voice.isTranscribing}
-            isSpeaking={voice.isSpeaking}
-            recordingSeconds={voice.recordingSeconds}
-            onToggleVoice={() => {
-              if (voice.isListening) voice.stopListening();
-              else {
-                void voice.startListening((text: string) => {
-                  if (text.trim()) void handleSendCommand(text.trim(), 'voice');
-                });
-              }
-            }}
-            onCancelVoice={voice.cancelListening}
-            onSpeak={(spoken) => void voice.speak(spoken)}
-            onStopSpeaking={voice.stopSpeaking}
-            activeWorkspace={data.activeWorkspace}
-          />
-        )}
       </div>
 
       {/* Modals */}
@@ -977,10 +861,9 @@ function FlowstateApp() {
         activeDomain={activeDomain}
         modelMode={modelMode}
         requireApproval={data.profile?.requireApprovalForExternal ?? true}
-        voice={voice}
         onCreateManual={data.createManualWorkflow}
         onCommitGeneratedWorkflow={data.createWorkflowFromDraft}
-        onSwitchToVoice={() => setActiveSection('command_center')}
+        onSwitchToVoice={() => setActiveSection('overview')}
       />
 
       <InsightModal

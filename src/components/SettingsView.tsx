@@ -21,7 +21,15 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { SUPPORTED_VOICE_LANGUAGES } from '../hooks/useVoice';
+const SUPPORTED_VOICE_LANGUAGES = [
+  { code: 'en-US', label: 'English (US)' },
+  { code: 'en-GB', label: 'English (UK)' },
+  { code: 'es-ES', label: 'Español' },
+  { code: 'fr-FR', label: 'Français' },
+  { code: 'de-DE', label: 'Deutsch' },
+  { code: 'hi-IN', label: 'हिन्दी (Hindi)' },
+  { code: 'ja-JP', label: '日本語' },
+];
 import { apiDeleteJson, apiPatchJson, apiPostJson } from '../lib/api';
 import {
   AuditLogItem,
@@ -216,7 +224,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         '--------------------------------------------------------------------------------',
         ...auditLogs.map(
           (log) =>
-            `[${safeIso(log.createdAtMs)}] [${log.status.toUpperCase()}] ${log.actor || 'System'} | ${log.eventType} | ${log.workflowTitle} — ${log.summary}`
+            `[${safeIso(log.createdAtMs)}] [${log.status.toUpperCase()}] ${log.actor || 'System'} | ${log.eventType} | ${log.workflowTitle} - ${log.summary}`
         ),
       ];
       content = lines.join('\n');
@@ -341,7 +349,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     { id: 'preferences', label: 'Preferences & Voice', icon: Monitor },
     ...(isOrg ? [{ id: 'team', label: 'Members & Permissions', icon: Users }] : []),
     { id: 'audit', label: `Audit Logs (${auditLogs.length})`, icon: Shield },
-    { id: 'install', label: 'Install App (PWA)', icon: Building2 },
   ] as const;
 
   return (

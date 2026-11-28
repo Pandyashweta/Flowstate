@@ -78,7 +78,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     badge?: number;
   }[] = [
     { id: 'overview', label: 'Home', icon: Home },
-    { id: 'command_center', label: 'AI Command Center', icon: Mic },
     { id: 'workflows', label: 'Workflows', icon: GitBranch },
     { id: 'tasks', label: 'Tasks', icon: CheckSquare },
     { id: 'knowledge_base', label: 'Knowledge Base', icon: BookOpen },
@@ -96,7 +95,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     label: string;
     icon: React.ComponentType<{ className?: string }>;
   }[] = [
-    { id: 'integrations', label: 'Integrations', icon: Plug },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -117,9 +115,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="w-full flex items-center justify-center cursor-pointer"
           >
             <img
-              src="/icons/favicon_io/android-chrome-192x192.png"
+              src="/icons/favicon_io/apple-touch-icon.png"
               alt="FLOWSTATE"
-              className="w-6 h-6 rounded-md object-cover"
+              className="w-7 h-7 rounded-lg object-cover"
             />
           </button>
         ) : (
@@ -132,9 +130,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="w-full flex items-center gap-2 group cursor-pointer"
               >
                 <img
-                  src="/icons/favicon_io/android-chrome-192x192.png"
+                  src="/icons/favicon_io/apple-touch-icon.png"
                   alt="FLOWSTATE"
-                  className="w-6 h-6 rounded-md object-cover shrink-0"
+                  className="w-7 h-7 rounded-lg object-cover shrink-0"
                 />
                 <span className="font-display font-semibold text-[13px] text-[#111111] dark:text-white truncate flex-1 text-left">
                   {activeWs?.name || 'Workspace'}
@@ -373,23 +371,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </div>
 
-      {/* ── Footer: role pill + install ── */}
+      {/* ── Footer: role pill ── */}
       {(!collapsed || isMobile) && (
         <div className="px-3 pb-3 pt-1 border-t border-[#E5E5E5] dark:border-[#1F1F1F] flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#F2F2F2] dark:bg-[#1A1A1A] text-[11px] font-medium text-[#525252] dark:text-[#A3A3A3] truncate">
             <span className="capitalize">{activeWs?.type === 'organization' ? 'Business' : 'Personal'}</span>
             <span className="text-[#A3A3A3] dark:text-[#737373]">· {activeWs?.role || 'Owner'}</span>
           </span>
-          {onInstallPwa && (
-            <button
-              type="button"
-              onClick={onInstallPwa}
-              title="Install FLOWSTATE"
-              className="p-1.5 rounded-md text-[#737373] hover:text-[#111111] dark:hover:text-white hover:bg-[#EFEFEF] dark:hover:bg-[#1F1F1F] cursor-pointer shrink-0"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
       )}
     </div>

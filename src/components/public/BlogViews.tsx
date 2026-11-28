@@ -241,7 +241,7 @@ export const BlogArchiveView: React.FC<BlogArchiveViewProps> = ({
             Your next workflow starts in a few seconds<span className="text-black">.</span>
           </h2>
           <p className="text-sm sm:text-base text-neutral-600 mb-8 max-w-lg mx-auto leading-relaxed">
-            Speak your instruction, ground it in your runbooks, and approve execution — all before you close the tab.
+            Speak your instruction, ground it in your runbooks, and approve execution - all before you close the tab.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <button
